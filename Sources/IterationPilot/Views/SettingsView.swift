@@ -75,7 +75,7 @@ struct SettingsView: View {
 
                     VStack(alignment: .leading, spacing: 12) {
                         ResponsiveFormRow("Base URL", labelWidth: 112) {
-                            AdaptiveTextField(placeholder: "https://docs.surfin-cn.com", text: Binding(
+                            AdaptiveTextField(placeholder: "填写 Confluence Base URL", text: Binding(
                                 get: { confluenceSettingsDraft.baseURL },
                                 set: { newValue in
                                     confluenceSettingsDraft.baseURL = newValue
@@ -85,7 +85,7 @@ struct SettingsView: View {
                         }
 
                         ResponsiveFormRow("Root IDs", labelWidth: 112) {
-                            AdaptiveTextField(placeholder: "3637801", text: Binding(
+                            AdaptiveTextField(placeholder: "填写 Root Page ID，多个用逗号分隔", text: Binding(
                                 get: { confluenceSettingsDraft.rootPageIDs },
                                 set: { newValue in
                                     confluenceSettingsDraft.rootPageIDs = newValue

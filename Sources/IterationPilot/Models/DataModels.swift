@@ -3713,8 +3713,8 @@ struct ConfluenceSettings: Codable, Equatable {
     var maxPages: Int
 
     static let `default` = ConfluenceSettings(
-        baseURL: "https://docs.surfin-cn.com",
-        rootPageIDs: "3637801",
+        baseURL: "",
+        rootPageIDs: "",
         titleKeywords: "",
         keychainService: "confluence-docs-token",
         keychainAccount: NSUserName(),
