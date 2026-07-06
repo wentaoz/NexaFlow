@@ -1,0 +1,3 @@
+interface:
+  display_name: "Data Ingestion Semantics"
+  short_description: "Explain what each NexaFlow data connector reads and means."

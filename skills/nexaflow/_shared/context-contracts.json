@@ -1,0 +1,88 @@
+{
+  "BusinessContext": {
+    "businessSpaceName": "string",
+    "countryOrRegion": "string",
+    "timezone": "string",
+    "currency": "string",
+    "productType": "credit_card | lending | fund | brokerage | other",
+    "businessDomains": ["string"],
+    "businessMapSummary": "string",
+    "complianceBoundaries": ["string"]
+  },
+  "DataContext": {
+    "reports": [
+      {
+        "name": "string",
+        "sheetName": "string",
+        "sourceType": "local_file | tableau | manual | other",
+        "rowCount": "number",
+        "columnCount": "number",
+        "fields": ["string"],
+        "periodCandidates": ["string"],
+        "coverageMode": "full | sample | profile | aggregate",
+        "limitations": ["string"]
+      }
+    ],
+    "selectedReportRoles": {
+      "primary": ["string"],
+      "driver": ["string"],
+      "outcome": ["string"],
+      "supporting": ["string"]
+    }
+  },
+  "EvidenceContext": {
+    "externalEvidence": [
+      {
+        "sourceName": "string",
+        "title": "string",
+        "url": "string",
+        "eventTime": "string | null",
+        "publishedTime": "string | null",
+        "collectedAt": "string",
+        "confidence": "high | medium | weak",
+        "limitation": "string"
+      }
+    ],
+    "projectEvidence": {
+      "jira": ["string"],
+      "dingtalk": ["string"],
+      "confluence": ["string"]
+    },
+    "knowledgeEntries": ["string"],
+    "memoryHits": ["string"]
+  },
+  "QuestionContext": {
+    "userQuestion": "string",
+    "reportScope": "fullConversation | selectedQuestions | customPeriod",
+    "selectedQuestions": ["string"],
+    "customPeriod": "string | null",
+    "includeInReport": "auto | include | exclude"
+  },
+  "OutputContract": {
+    "analysis": [
+      "AI read coverage",
+      "facts",
+      "inferences",
+      "hypotheses",
+      "missing data",
+      "actions"
+    ],
+    "fullReport": [
+      "summary",
+      "AI read coverage",
+      "scope",
+      "data coverage",
+      "metrics",
+      "drivers",
+      "external/project evidence",
+      "risks",
+      "opportunities",
+      "actions"
+    ],
+    "conciseReport": [
+      "period changes",
+      "cause analysis",
+      "action recommendations"
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Table Period and Quality"
+  short_description: "Inspect table shape, period candidates, and quality risks."

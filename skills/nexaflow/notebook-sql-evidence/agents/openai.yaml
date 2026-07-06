@@ -1,0 +1,3 @@
+interface:
+  display_name: "Notebook SQL Evidence"
+  short_description: "Plan safe SQL and Notebook evidence for verified analysis."

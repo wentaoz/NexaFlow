@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "nexaflow": {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "/Users/WilliamChang/Documents/Playground/IterationPilot/mcp/nexaflow-mcp/src/server.ts"
+      ]
+    }
+  }
+}

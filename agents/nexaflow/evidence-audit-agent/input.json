@@ -1,0 +1,26 @@
+{
+  "agent": "evidence-audit-agent",
+  "task": "Describe the user task here.",
+  "businessContext": {
+    "businessSpace": "",
+    "country": "",
+    "timezone": "",
+    "productType": ""
+  },
+  "dataContext": {
+    "selectedReports": [],
+    "periodPolicy": "",
+    "sourceLimitations": []
+  },
+  "evidenceContext": {
+    "knowledge": [],
+    "projectEvidence": [],
+    "externalEvidence": [],
+    "calculationEvidence": []
+  },
+  "constraints": {
+    "readOnly": true,
+    "doNotExposeSecrets": true,
+    "businessSpaceIsolation": true
+  }
+}

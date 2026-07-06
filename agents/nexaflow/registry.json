@@ -1,0 +1,76 @@
+{
+  "agents": [
+    {
+      "name": "data-acquisition-agent",
+      "responsibility": "Prepare safe data acquisition plans.",
+      "skills": ["data-ingestion-semantics", "external-evidence-research", "business-space-modeling"],
+      "outputs": ["connector requirements", "setup checklist", "evidence meaning"]
+    },
+    {
+      "name": "analysis-prep-agent",
+      "responsibility": "Prepare structured analysis context.",
+      "skills": ["table-period-and-quality", "smart-memory-correction", "notebook-sql-evidence"],
+      "outputs": ["BusinessContext", "DataContext", "EvidenceContext", "QuestionContext"]
+    },
+    {
+      "name": "financial-analysis-agent",
+      "responsibility": "Answer fintech product and operations questions.",
+      "skills": ["financial-product-analysis", "metric-diagnostics", "external-evidence-research"],
+      "outputs": ["quick answer", "deep analysis"]
+    },
+    {
+      "name": "report-agent",
+      "responsibility": "Generate complete and concise report briefs.",
+      "skills": ["kpi-reporting", "financial-product-analysis", "smart-memory-correction"],
+      "outputs": ["report markdown", "export summary"]
+    },
+    {
+      "name": "evidence-audit-agent",
+      "responsibility": "Audit whether outputs are evidence-backed.",
+      "skills": ["external-evidence-research", "notebook-sql-evidence", "smart-memory-correction"],
+      "outputs": ["findings", "corrected evidence note"]
+    },
+    {
+      "name": "memory-curator-agent",
+      "responsibility": "Extract and apply memory candidates.",
+      "skills": ["smart-memory-correction"],
+      "outputs": ["memory candidate", "scope", "report exclusion effect"]
+    },
+    {
+      "name": "connector-sync-agent",
+      "responsibility": "Plan connector sync and explain sync failures.",
+      "skills": ["data-ingestion-semantics", "external-evidence-research"],
+      "outputs": ["setup requirements", "failure cause", "safe action"]
+    },
+    {
+      "name": "quality-guard-agent",
+      "responsibility": "Check output safety, evidence, scope, and formatting.",
+      "skills": ["financial-product-analysis", "kpi-reporting", "metric-diagnostics"],
+      "outputs": ["pass/fail", "issues", "suggested wording"]
+    },
+    {
+      "name": "orchestrator-agent",
+      "responsibility": "Choose the right agent chain.",
+      "skills": ["app-ux-product-ops", "data-ingestion-semantics", "financial-product-analysis", "kpi-reporting"],
+      "outputs": ["agent plan", "handoff notes"]
+    },
+    {
+      "name": "report-scope-agent",
+      "responsibility": "Select report questions and exclusions.",
+      "skills": ["kpi-reporting", "app-ux-product-ops"],
+      "outputs": ["selected questions", "excluded questions", "scope note"]
+    },
+    {
+      "name": "connector-debug-agent",
+      "responsibility": "Diagnose connector errors safely.",
+      "skills": ["connector-troubleshooting", "data-ingestion-semantics"],
+      "outputs": ["likely cause", "fields to check", "next action"]
+    },
+    {
+      "name": "tableau-import-advisor-agent",
+      "responsibility": "Advise Tableau View/Worksheet imports and limits.",
+      "skills": ["data-ingestion-semantics", "connector-troubleshooting", "table-period-and-quality"],
+      "outputs": ["setup checks", "import limitation note", "AI evidence wording"]
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Smart Memory Correction"
+  short_description: "Apply correction memory, definitions, and report exclusions."

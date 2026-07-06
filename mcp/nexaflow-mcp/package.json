@@ -1,0 +1,17 @@
+{
+  "name": "@nexaflow/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only MCP server for NexaFlow skills, agents, and analysis contracts.",
+  "bin": {
+    "nexaflow-mcp": "./src/server.ts"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "test": "node --experimental-strip-types test/protocol.test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

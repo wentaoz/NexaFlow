@@ -1,0 +1,3 @@
+interface:
+  display_name: "Kpi Reporting"
+  short_description: "Create NexaFlow complete and concise operating reports."

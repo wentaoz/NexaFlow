@@ -1,0 +1,30 @@
+.DS_Store
+.AppleDouble
+.LSOverride
+.build/
+.swiftpm/
+dist/
+DerivedData/
+node_modules/
+outputs/
+
+# Local/generated regression artifacts
+.codex/regression-harness/
+artifacts/architecture-images/
+artifacts/gui-regression-*/
+artifacts/regression-backups/
+artifacts/release/
+artifacts/screenshots/
+
+# Local secrets and runtime workspaces
+.env
+.env.*
+!.env.example
+workspace.json
+artifacts/workspace-backup*.json
+workspace.corrupt-*.json
+
+# Office and macOS temporary files
+.~*
+~$*
+*.tmp
