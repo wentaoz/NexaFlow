@@ -296,7 +296,8 @@ enum ExcelParser {
         var result = ""
         while number > 0 {
             number -= 1
-            result = String(UnicodeScalar(65 + number % 26)!) + result
+            guard let scalar = UnicodeScalar(65 + number % 26) else { break }
+            result = String(scalar) + result
             number /= 26
         }
         return result.isEmpty ? "A" : result

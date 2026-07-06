@@ -116,13 +116,25 @@ private enum DateParsingCache {
         "dd MMM yyyy"
     ]
 
-    static let periodRangeRegex = try! NSRegularExpression(
-        pattern: #"(\d{4}[/-]\d{1,2}[/-]\d{1,2})\s*-\s*((?:\d{4}[/-])?\d{1,2}[/-]\d{1,2})"#
-    )
+    private static let periodRangeRegexPattern =
+        #"(\d{4}[/-]\d{1,2}[/-]\d{1,2})\s*-\s*((?:\d{4}[/-])?\d{1,2}[/-]\d{1,2})"#
 
-    static let monthDayRangeRegex = try! NSRegularExpression(
-        pattern: #"(\d{1,2}[/-]\d{1,2})\s*-\s*(\d{1,2}[/-]\d{1,2})"#
-    )
+    static let periodRangeRegex: NSRegularExpression = {
+        guard let regex = try? NSRegularExpression(pattern: periodRangeRegexPattern) else {
+            preconditionFailure("Invalid static regex pattern: \(periodRangeRegexPattern)")
+        }
+        return regex
+    }()
+
+    private static let monthDayRangeRegexPattern =
+        #"(\d{1,2}[/-]\d{1,2})\s*-\s*(\d{1,2}[/-]\d{1,2})"#
+
+    static let monthDayRangeRegex: NSRegularExpression = {
+        guard let regex = try? NSRegularExpression(pattern: monthDayRangeRegexPattern) else {
+            preconditionFailure("Invalid static regex pattern: \(monthDayRangeRegexPattern)")
+        }
+        return regex
+    }()
 
     static var iso: ISO8601DateFormatter {
         threadCachedFormatter(key: "DateParsingCache.iso") {

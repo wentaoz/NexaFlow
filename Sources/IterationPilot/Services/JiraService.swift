@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum JiraServiceError: LocalizedError {
     case invalidBaseURL
@@ -18,8 +19,11 @@ enum JiraServiceError: LocalizedError {
             return "请填写 Jira Token。"
         case .missingUsername:
             return "Jira Cloud API Token 模式需要填写用户名或邮箱。"
-        case let .requestFailed(statusCode, body):
-            return "Jira 请求失败：HTTP \(statusCode)。\(body)"
+        case let .requestFailed(statusCode, _):
+            if statusCode == 401 || statusCode == 403 {
+                return "Jira 请求失败：HTTP \(statusCode)。Token 无效、过期，或没有项目权限。"
+            }
+            return "Jira 请求失败：HTTP \(statusCode)。请检查网络、Base URL、Project Key、JQL 和 Token 配置。"
         case .invalidResponse:
             return "Jira 返回数据无法解析。"
         }
@@ -27,6 +31,8 @@ enum JiraServiceError: LocalizedError {
 }
 
 struct JiraService {
+    private static let logger = Logger(subsystem: "NexaFlow", category: "Jira")
+
     func testConnection(source: JiraProjectSource) async throws -> String {
         var testSource = source
         testSource.maxIssues = 1
@@ -117,10 +123,10 @@ struct JiraService {
             throw JiraServiceError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            let text = String(data: data, encoding: .utf8)?
-                .replacingOccurrences(of: source.token, with: "[token]")
-                .prefix(600)
-            throw JiraServiceError.requestFailed(statusCode: http.statusCode, body: String(text ?? ""))
+            let body = String(data: data.prefix(600), encoding: .utf8) ?? ""
+            let sanitizedBody = Self.sanitizedErrorBody(body, source: source)
+            Self.logger.error("Request failed: status=\(http.statusCode, privacy: .public), url=\(endpoint.absoluteString, privacy: .private), body=\(sanitizedBody, privacy: .private)")
+            throw JiraServiceError.requestFailed(statusCode: http.statusCode, body: "")
         }
 
         do {
@@ -128,6 +134,26 @@ struct JiraService {
         } catch {
             throw JiraServiceError.invalidResponse
         }
+    }
+
+    private static func sanitizedErrorBody(_ body: String, source: JiraProjectSource) -> String {
+        var description = body
+        let username = source.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = source.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        var secrets: [(secret: String, replacement: String)] = []
+        if !username.isEmpty, !token.isEmpty {
+            secrets.append((Data("\(username):\(token)".utf8).base64EncodedString(), "[redacted]"))
+        }
+        if !token.isEmpty {
+            secrets.append((token, "[token]"))
+        }
+        if !username.isEmpty {
+            secrets.append((username, "[username]"))
+        }
+        for (secret, replacement) in secrets where !secret.isEmpty {
+            description = description.replacingOccurrences(of: secret, with: replacement)
+        }
+        return description
     }
 
     private func normalizedJQL(source: JiraProjectSource) -> String {

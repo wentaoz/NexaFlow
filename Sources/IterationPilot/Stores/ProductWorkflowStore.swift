@@ -128,6 +128,7 @@ public final class ProductWorkflowStore: ObservableObject {
     nonisolated private static let workspacePathEnvironmentKey = "NEXAFLOW_WORKSPACE_PATH"
     nonisolated private static let aiEndpointEnvironmentKey = "NEXAFLOW_AI_ENDPOINT"
     nonisolated private static let aiModelEnvironmentKey = "NEXAFLOW_AI_MODEL"
+    private static let confluenceJSONImportDirectoryKey = "NEXAFLOW_LAST_CONFLUENCE_JSON_DIRECTORY"
     nonisolated private static let aiAPIKeyEnvironmentKey = "NEXAFLOW_AI_API_KEY"
     nonisolated private static let aiSystemPromptEnvironmentKey = "NEXAFLOW_AI_SYSTEM_PROMPT"
 
@@ -1037,9 +1038,10 @@ public final class ProductWorkflowStore: ObservableObject {
         let settings = workspace.aiSettings
         isRunningFieldDictionaryAI = true
         statusText = "正在生成字段定义问题..."
-        Task {
-            let question = await generateFieldDictionaryQuestion(for: definition, settings: settings)
-            appendFieldDictionaryMessage(FieldDictionaryMessage(
+        Task { [weak self] in
+            guard let self else { return }
+            let question = await self.generateFieldDictionaryQuestion(for: definition, settings: settings)
+            self.appendFieldDictionaryMessage(FieldDictionaryMessage(
                 id: UUID(),
                 createdAt: Date(),
                 role: .assistant,
@@ -1048,8 +1050,8 @@ public final class ProductWorkflowStore: ObservableObject {
                 fieldName: definition.fieldName,
                 content: question
             ))
-            statusText = "字段助手已提问"
-            isRunningFieldDictionaryAI = false
+            self.statusText = "字段助手已提问"
+            self.isRunningFieldDictionaryAI = false
         }
     }
 
@@ -1074,7 +1076,8 @@ public final class ProductWorkflowStore: ObservableObject {
         let settings = workspace.aiSettings
         isRunningFieldDictionaryAI = true
         statusText = "正在整理字段含义..."
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             let fallback = FieldDictionaryAIService.fallbackInterpretation(for: definition, userAnswer: trimmed)
             let interpretation: FieldDictionaryInterpretation
             if settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1093,8 +1096,8 @@ public final class ProductWorkflowStore: ObservableObject {
                 }
             }
 
-            applyFieldDictionaryInterpretation(interpretation, fieldID: definition.id)
-            appendFieldDictionaryMessage(FieldDictionaryMessage(
+            self.applyFieldDictionaryInterpretation(interpretation, fieldID: definition.id)
+            self.appendFieldDictionaryMessage(FieldDictionaryMessage(
                 id: UUID(),
                 createdAt: Date(),
                 role: .assistant,
@@ -1105,9 +1108,9 @@ public final class ProductWorkflowStore: ObservableObject {
             ))
 
             if let nextPack = self.selectedPack,
-               let nextDefinition = nextUnconfirmedFieldDefinition(in: nextPack) {
-                let question = await generateFieldDictionaryQuestion(for: nextDefinition, settings: settings)
-                appendFieldDictionaryMessage(FieldDictionaryMessage(
+               let nextDefinition = self.nextUnconfirmedFieldDefinition(in: nextPack) {
+                let question = await self.generateFieldDictionaryQuestion(for: nextDefinition, settings: settings)
+                self.appendFieldDictionaryMessage(FieldDictionaryMessage(
                     id: UUID(),
                     createdAt: Date(),
                     role: .assistant,
@@ -1117,7 +1120,7 @@ public final class ProductWorkflowStore: ObservableObject {
                     content: question
                 ))
             } else {
-                appendFieldDictionaryMessage(FieldDictionaryMessage(
+                self.appendFieldDictionaryMessage(FieldDictionaryMessage(
                     id: UUID(),
                     createdAt: Date(),
                     role: .system,
@@ -1128,8 +1131,8 @@ public final class ProductWorkflowStore: ObservableObject {
                 ))
             }
 
-            statusText = "字段含义已保存"
-            isRunningFieldDictionaryAI = false
+            self.statusText = "字段含义已保存"
+            self.isRunningFieldDictionaryAI = false
         }
     }
 
@@ -2268,13 +2271,16 @@ public final class ProductWorkflowStore: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.json]
 
-        let defaultURL = URL(fileURLWithPath: "/Users/WilliamChang/Documents/Playground/sufinc_credit_card_confluence/pages.json")
-        if FileManager.default.fileExists(atPath: defaultURL.path) {
-            panel.directoryURL = defaultURL.deletingLastPathComponent()
-            panel.nameFieldStringValue = defaultURL.lastPathComponent
+        if let lastDirectoryPath = UserDefaults.standard.string(forKey: Self.confluenceJSONImportDirectoryKey),
+           !lastDirectoryPath.isEmpty {
+            let lastDirectoryURL = URL(fileURLWithPath: lastDirectoryPath, isDirectory: true)
+            if FileManager.default.fileExists(atPath: lastDirectoryURL.path) {
+                panel.directoryURL = lastDirectoryURL
+            }
         }
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        UserDefaults.standard.set(url.deletingLastPathComponent().path, forKey: Self.confluenceJSONImportDirectoryKey)
         let startedAt = Date()
         let sourceName = url.lastPathComponent
         isSyncingConfluence = true

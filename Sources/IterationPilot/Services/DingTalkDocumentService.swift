@@ -6,6 +6,8 @@ enum DingTalkDocumentServiceError: LocalizedError {
     case missingOperatorID
     case missingFolder
     case missingSpaceID(folder: String)
+    case invalidSpaceID
+    case invalidURL
     case invalidTokenResponse
     case requestFailed(statusCode: Int, body: String)
     case invalidResponse
@@ -22,6 +24,10 @@ enum DingTalkDocumentServiceError: LocalizedError {
             return "请至少填写一个钉钉文件夹链接或文件夹 ID。"
         case let .missingSpaceID(folder):
             return "文件夹缺少 Space ID：\(folder)。请粘贴完整文件夹链接，或填写默认 Space ID；普通 alidocs 文件夹链接会自动反查 Space ID。"
+        case .invalidSpaceID:
+            return "钉钉 Space ID 无效。"
+        case .invalidURL:
+            return "钉钉请求地址无法生成。"
         case .invalidTokenResponse:
             return "钉钉 access token 返回无法解析。"
         case let .requestFailed(statusCode, body):
@@ -154,8 +160,8 @@ struct DingTalkDocumentService {
         parentID: String,
         nextToken: String?
     ) async throws -> (items: [[String: Any]], nextToken: String?) {
-        let endpoint = URL(string: "https://api.dingtalk.com/v1.0/storage/spaces/\(spaceID)/dentries")!
-        let legacyEndpoint = URL(string: "https://api.dingtalk.com/v1.0/storage/spaces/\(spaceID)/dentries/listAll")!
+        let endpoint = try makeDingTalkDentriesURL(spaceID: spaceID)
+        let legacyEndpoint = try makeDingTalkDentriesURL(spaceID: spaceID, suffix: "/listAll")
         let params: [String: Any] = [
             "operatorId": operatorID,
             "parentId": parentID,
@@ -176,6 +182,25 @@ struct DingTalkDocumentService {
                 }
             }
         }
+    }
+
+    private func makeDingTalkDentriesURL(spaceID: String, suffix: String = "") throws -> URL {
+        let trimmedSpaceID = spaceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        var allowedPathSegmentCharacters = CharacterSet.urlPathAllowed
+        allowedPathSegmentCharacters.remove(charactersIn: "/%")
+        guard !trimmedSpaceID.isEmpty,
+              let encodedSpaceID = trimmedSpaceID.addingPercentEncoding(withAllowedCharacters: allowedPathSegmentCharacters) else {
+            throw DingTalkDocumentServiceError.invalidSpaceID
+        }
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "api.dingtalk.com"
+        components.percentEncodedPath = "/v1.0/storage/spaces/\(encodedSpaceID)/dentries\(suffix)"
+        guard let url = components.url else {
+            throw DingTalkDocumentServiceError.invalidURL
+        }
+        return url
     }
 
     private func requestDentries(

@@ -155,13 +155,14 @@ extension ProductWorkflowStore {
         testingDingTalkDocumentSourceIDs.insert(source.id)
         statusText = "正在测试钉钉连接：\(current.displayName)"
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.testingDingTalkDocumentSourceIDs.remove(current.id) }
             do {
-                statusText = try await DingTalkDocumentService().testConnection(source: current)
+                self.statusText = try await DingTalkDocumentService().testConnection(source: current)
             } catch {
-                statusText = "钉钉测试失败：\(error.localizedDescription)"
+                self.statusText = "钉钉测试失败：\(error.localizedDescription)"
             }
-            testingDingTalkDocumentSourceIDs.remove(current.id)
         }
     }
 
@@ -172,10 +173,12 @@ extension ProductWorkflowStore {
         statusText = automatic ? "正在自动同步钉钉文档：\(current.displayName)" : "正在同步钉钉文档：\(current.displayName)"
         let startedAt = Date()
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.syncingDingTalkDocumentSourceIDs.remove(current.id) }
             do {
                 let result = try await DingTalkDocumentService().fetchDocuments(source: current)
-                mergeDingTalkDocumentSyncResult(
+                self.mergeDingTalkDocumentSyncResult(
                     sourceID: current.id,
                     result: result,
                     startedAt: startedAt,
@@ -184,7 +187,7 @@ extension ProductWorkflowStore {
                 )
             } catch {
                 let result = DingTalkDocumentFetchResult(items: [], folderCount: current.parsedFolderInputs.count, skippedCount: 0, failures: [])
-                mergeDingTalkDocumentSyncResult(
+                self.mergeDingTalkDocumentSyncResult(
                     sourceID: current.id,
                     result: result,
                     startedAt: startedAt,
@@ -192,7 +195,6 @@ extension ProductWorkflowStore {
                     failureMessage: error.localizedDescription
                 )
             }
-            syncingDingTalkDocumentSourceIDs.remove(current.id)
         }
     }
 
@@ -261,13 +263,14 @@ extension ProductWorkflowStore {
         testingJiraProjectSourceIDs.insert(source.id)
         statusText = "正在测试 Jira 连接：\(current.displayName)"
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.testingJiraProjectSourceIDs.remove(current.id) }
             do {
-                statusText = try await JiraService().testConnection(source: current)
+                self.statusText = try await JiraService().testConnection(source: current)
             } catch {
-                statusText = "Jira 测试失败：\(error.localizedDescription)"
+                self.statusText = "Jira 测试失败：\(error.localizedDescription)"
             }
-            testingJiraProjectSourceIDs.remove(current.id)
         }
     }
 
@@ -278,10 +281,12 @@ extension ProductWorkflowStore {
         statusText = automatic ? "正在自动同步 Jira：\(current.displayName)" : "正在同步 Jira：\(current.displayName)"
         let startedAt = Date()
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.syncingJiraProjectSourceIDs.remove(current.id) }
             do {
                 let evidences = try await JiraService().fetchProjectEvidence(source: current)
-                mergeJiraProjectSyncResult(
+                self.mergeJiraProjectSyncResult(
                     sourceID: current.id,
                     evidences: evidences,
                     startedAt: startedAt,
@@ -289,7 +294,7 @@ extension ProductWorkflowStore {
                     failureMessage: nil
                 )
             } catch {
-                mergeJiraProjectSyncResult(
+                self.mergeJiraProjectSyncResult(
                     sourceID: current.id,
                     evidences: [],
                     startedAt: startedAt,
@@ -297,7 +302,6 @@ extension ProductWorkflowStore {
                     failureMessage: error.localizedDescription
                 )
             }
-            syncingJiraProjectSourceIDs.remove(current.id)
         }
     }
 
@@ -319,13 +323,15 @@ extension ProductWorkflowStore {
         statusText = automatic ? "正在自动同步本地知识：\(current.displayName)" : "正在同步本地知识：\(current.displayName)"
         let startedAt = Date()
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.syncingLocalKnowledgeFolderSourceIDs.remove(current.id) }
             let folderURL = URL(fileURLWithPath: current.folderPath, isDirectory: true)
             let parsedResult = await Task.detached(priority: .userInitiated) {
                 LocalKnowledgeFolderSyncService.parseSupportedFiles(in: folderURL)
             }.value
 
-            mergeLocalKnowledgeFolderSyncResult(
+            self.mergeLocalKnowledgeFolderSyncResult(
                 sourceID: current.id,
                 parsedFiles: parsedResult.files,
                 totalFiles: parsedResult.totalFiles,
@@ -333,7 +339,6 @@ extension ProductWorkflowStore {
                 startedAt: startedAt,
                 automatic: automatic
             )
-            syncingLocalKnowledgeFolderSourceIDs.remove(current.id)
         }
     }
 

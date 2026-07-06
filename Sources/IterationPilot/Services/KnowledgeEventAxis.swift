@@ -223,7 +223,13 @@ enum KnowledgeEventAxis {
         "上线", "发布", "发版", "投产", "生效", "灰度", "全量", "release", "launch", "go_live", "rollout", "ship"
     ]
 
-    private static let explicitDateRegex = try! NSRegularExpression(
-        pattern: #"\d{4}\s*(?:年|[-/.])\s*\d{1,2}\s*(?:月|[-/.])\s*\d{1,2}\s*日?"#
-    )
+    private static let explicitDateRegexPattern =
+        #"\d{4}\s*(?:年|[-/.])\s*\d{1,2}\s*(?:月|[-/.])\s*\d{1,2}\s*日?"#
+
+    private static let explicitDateRegex: NSRegularExpression = {
+        guard let regex = try? NSRegularExpression(pattern: explicitDateRegexPattern) else {
+            preconditionFailure("Invalid static regex pattern: \(explicitDateRegexPattern)")
+        }
+        return regex
+    }()
 }

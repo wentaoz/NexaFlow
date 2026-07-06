@@ -1,7 +1,16 @@
 import DuckDB
 import Foundation
+import OSLog
 
 enum AnalysisSQLRuntime {
+    private static let logger = Logger(subsystem: "NexaFlow", category: "SQL")
+    private static let yearRegex: NSRegularExpression = {
+        guard let regex = try? NSRegularExpression(pattern: #"(20\d{2})"#) else {
+            preconditionFailure("Invalid static regex pattern: (20\\d{2})")
+        }
+        return regex
+    }()
+
     private struct ReportTableMap {
         var reportID: UUID
         var reportName: String
@@ -40,7 +49,14 @@ enum AnalysisSQLRuntime {
         do {
             let database = try Database(store: .inMemory)
             let connection = try database.connect()
-            try? connection.execute("SET threads TO 1")
+            do {
+                try connection.execute("SET threads TO 1")
+            } catch {
+                logger.warning("Failed to set DuckDB threads to 1: \(error.localizedDescription, privacy: .public)")
+                #if DEBUG
+                assertionFailure("Failed to set DuckDB threads: \(error)")
+                #endif
+            }
 
             try connection.execute("""
             CREATE TABLE metric_period_values(
@@ -1143,8 +1159,7 @@ enum AnalysisSQLRuntime {
 
         let nsText = text as NSString
         let nsLowered = lowered as NSString
-        let regex = try? NSRegularExpression(pattern: #"(20\d{2})"#)
-        let matches = regex?.matches(in: text, range: NSRange(location: 0, length: nsText.length)) ?? []
+        let matches = yearRegex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
         let keywordLocations = halfKeywords.compactMap { keyword -> Int? in
             let location = nsLowered.range(of: keyword.lowercased()).location
             return location == NSNotFound ? nil : location
@@ -1229,7 +1244,7 @@ enum AnalysisSQLRuntime {
         let keywords = requestedMetricKeywords(userRequest)
         guard !keywords.isEmpty else { return "99" }
         let whens = keywords.enumerated().map { index, keyword in
-            "WHEN \(expression) LIKE '%\(sqlLiteral(keyword))%' THEN \(index)"
+            "WHEN \(expression) LIKE '%\(sqlLikePattern(keyword))%' ESCAPE '\\' THEN \(index)"
         }.joined(separator: " ")
         return "CASE \(whens) ELSE 99 END"
     }
@@ -1311,5 +1326,13 @@ enum AnalysisSQLRuntime {
 
     private static func sqlLiteral(_ text: String) -> String {
         text.replacingOccurrences(of: "'", with: "''")
+    }
+
+    static func sqlLikePattern(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "''")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
     }
 }

@@ -19,11 +19,13 @@ func drawIcon(size: CGFloat) -> NSImage {
     let radius = size * 0.215
     let appShape = NSBezierPath(roundedRect: bounds.insetBy(dx: size * 0.035, dy: size * 0.035), xRadius: radius, yRadius: radius)
 
-    let baseGradient = NSGradient(colors: [
+    guard let baseGradient = NSGradient(colors: [
         NSColor(calibratedRed: 0.035, green: 0.18, blue: 0.30, alpha: 1),
         NSColor(calibratedRed: 0.02, green: 0.36, blue: 0.50, alpha: 1),
         NSColor(calibratedRed: 0.02, green: 0.50, blue: 0.40, alpha: 1)
-    ])!
+    ]) else {
+        fatalError("Unable to create gradient with valid colors")
+    }
     baseGradient.draw(in: appShape, angle: -38)
 
     NSColor(calibratedWhite: 1, alpha: 0.14).setStroke()

@@ -690,6 +690,37 @@ final class AnalysisHarnessTests: XCTestCase {
         XCTAssert(!AnalysisHarnessRouter.userMessageLooksLikeContextEvidenceQuestion("把这句话翻译一下"))
         XCTAssert(!AnalysisHarnessRouter.userMessageLooksLikeContextEvidenceQuestion("这个结论是什么意思，帮我解释一下"))
     }
+    func testSQLLikePatternEscapesWildcardsAndStringLiterals() {
+        XCTAssert(AnalysisSQLRuntime.sqlLikePattern(#"a%b_c\d'e"#) == #"a\%b\_c\\d''e"#)
+    }
+    func testNotebookRequestedMetricSQLUsesLikeEscapeAndRuns() throws {
+        let report = makeReport(
+            headers: ["指标", "2025-07", "2026-01"],
+            rows: [
+                ["指标": "交易人数", "2025-07": "10", "2026-01": "20"]
+            ]
+        )
+        var pack = SampleDataFactory.makeSamplePack()
+        pack.importedReports = [report]
+        let workspace = ProductWorkspace(dataPacks: [pack], knowledgeEntries: [], aiSettings: .default)
+
+        let run = AnalysisSQLRuntime.buildNotebookRun(
+            userRequest: "对比 2025 下半年和 2026 上半年交易人数",
+            reports: [report],
+            workspace: workspace,
+            pack: pack,
+            task: nil,
+            sessionID: nil,
+            messageID: nil,
+            trigger: "regression-test",
+            contextMode: .fullReanalysis
+        )
+
+        let cell = try XCTUnwrap(run.cells.first { $0.title == "关键指标计算结果" })
+        XCTAssert(cell.sql.contains(#"ESCAPE '\'"#), cell.sql)
+        XCTAssert(cell.status == .success, cell.errorMessage ?? "Expected key metric SQL to run")
+        XCTAssert(cell.rows.contains { row in row.contains("交易人数") }, "Expected calculated rows to include the requested metric")
+    }
     func testRouterDowngradesSimpleTasksButKeepsComputationsVerified() {
         XCTAssert(AnalysisHarnessRouter.userMessageLooksLikeLightweightTask("把上面这段话翻译成英文"))
         XCTAssert(AnalysisHarnessRouter.userMessageLooksLikeLightweightTask("这个结论是什么意思，帮我解释一下"))

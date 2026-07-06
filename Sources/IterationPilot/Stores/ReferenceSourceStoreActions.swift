@@ -138,8 +138,9 @@ extension ProductWorkflowStore {
             statusText = "无法测试此源：\(issue.detail)"
             return
         }
-        Task {
-            let succeeded = await collectReferenceSources(
+        Task { [weak self] in
+            guard let self else { return }
+            let succeeded = await self.collectReferenceSources(
                 sources: [source],
                 autoRecompute: false,
                 silent: false,
@@ -147,7 +148,7 @@ extension ProductWorkflowStore {
                 trigger: .singleSourceTest
             )
             if succeeded {
-                markReferenceSourceTested(source)
+                self.markReferenceSourceTested(source)
             }
         }
     }
@@ -219,8 +220,9 @@ extension ProductWorkflowStore {
             return
         }
 
-        Task {
-            await collectReferenceSources(
+        Task { [weak self] in
+            guard let self else { return }
+            await self.collectReferenceSources(
                 sources: sources,
                 autoRecompute: autoRecompute,
                 silent: silent,
@@ -310,7 +312,8 @@ extension ProductWorkflowStore {
                 detail: "本轮选择 \(selectedSources.count) 个高优先级外部源后台采集，跳过 \(skippedCount) 个低优先级源；AI 会先基于表格、知识库和已有缓存分析。分析周期：\(evidenceWindow.summary)"
             ))
         }
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             await self.collectReferenceSources(
                 sources: selectedSources,
                 autoRecompute: false,

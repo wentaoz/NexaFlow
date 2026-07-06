@@ -38,6 +38,8 @@ await run("ReliabilityTests.testWorkspaceSaveAndLoadRoundTrip") { try reliabilit
 await run("ReliabilityTests.testWorkspaceSavePersistsAIAPIKey") { try reliability.testWorkspaceSavePersistsAIAPIKey() }
 await run("ReliabilityTests.testWorkspaceAPIKeyDecodesAndResavesWithSecret") { try reliability.testWorkspaceAPIKeyDecodesAndResavesWithSecret() }
 await run("ReliabilityTests.testCancellationErrorIsNotRetryable") { reliability.testCancellationErrorIsNotRetryable() }
+await run("ReliabilityTests.testConfluenceRequestFailedDescriptionDoesNotExposeURLOrBody") { reliability.testConfluenceRequestFailedDescriptionDoesNotExposeURLOrBody() }
+await run("ReliabilityTests.testJiraRequestFailedDescriptionDoesNotExposeCredentialsOrBody") { reliability.testJiraRequestFailedDescriptionDoesNotExposeCredentialsOrBody() }
 
 let persistentFingerprint = PersistentAIJobFingerprintTests()
 await run("PersistentAIJobFingerprintTests.testFingerprintIsStableAndDoesNotExposeRawPayloadText") { persistentFingerprint.testFingerprintIsStableAndDoesNotExposeRawPayloadText() }
@@ -79,6 +81,8 @@ await run("AnalysisHarnessTests.testDeterministicReportIncludesContextEvidenceCi
 await run("AnalysisHarnessTests.testOrchestratorBlocksWithoutTables") { try await harness.testOrchestratorBlocksWithoutTables() }
 await run("AnalysisHarnessTests.testRouterDetectsQuickComputationButNotPureExplanation") { harness.testRouterDetectsQuickComputationButNotPureExplanation() }
 await run("AnalysisHarnessTests.testRouterDetectsContextEvidenceQuestions") { harness.testRouterDetectsContextEvidenceQuestions() }
+await run("AnalysisHarnessTests.testSQLLikePatternEscapesWildcardsAndStringLiterals") { harness.testSQLLikePatternEscapesWildcardsAndStringLiterals() }
+await run("AnalysisHarnessTests.testNotebookRequestedMetricSQLUsesLikeEscapeAndRuns") { try harness.testNotebookRequestedMetricSQLUsesLikeEscapeAndRuns() }
 await run("AnalysisHarnessTests.testRouterDowngradesSimpleTasksButKeepsComputationsVerified") { harness.testRouterDowngradesSimpleTasksButKeepsComputationsVerified() }
 await run("AnalysisHarnessTests.testPeriodIntentUsesLatestPeriodRequestBeforeStaleTaskGoal") { harness.testPeriodIntentUsesLatestPeriodRequestBeforeStaleTaskGoal() }
 await run("AnalysisHarnessTests.testPeriodIntentLatestRequestDoesNotFallbackToStaleTaskGoalWhenPeriodIsUnresolved") { harness.testPeriodIntentLatestRequestDoesNotFallbackToStaleTaskGoalWhenPeriodIsUnresolved() }

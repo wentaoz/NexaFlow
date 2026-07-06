@@ -95,6 +95,38 @@ final class ReliabilityTests: XCTestCase {
     func testCancellationErrorIsNotRetryable() {
         XCTAssert(AIJobQueue.isRetryable(CancellationError()) == false)
     }
+
+    func testConfluenceRequestFailedDescriptionDoesNotExposeURLOrBody() {
+        let error = ConfluenceError.requestFailed(
+            statusCode: 404,
+            url: "https://example.atlassian.net/wiki/rest/api/content/secret-page?token=abc",
+            body: #"{"message":"permission denied","token":"secret"}"#
+        )
+        let description = error.localizedDescription
+
+        XCTAssert(description.contains("HTTP 404"))
+        XCTAssert(!description.contains("example.atlassian.net"))
+        XCTAssert(!description.contains("secret-page"))
+        XCTAssert(!description.contains("permission denied"))
+        XCTAssert(!description.contains("secret"))
+    }
+
+    func testJiraRequestFailedDescriptionDoesNotExposeCredentialsOrBody() {
+        let username = "owner@example.com"
+        let token = "jira-token-secret"
+        let encodedCredential = Data("\(username):\(token)".utf8).base64EncodedString()
+        let error = JiraServiceError.requestFailed(
+            statusCode: 403,
+            body: "Authorization Basic \(encodedCredential); user \(username); token \(token); raw response"
+        )
+        let description = error.localizedDescription
+
+        XCTAssert(description.contains("HTTP 403"))
+        XCTAssert(!description.contains(encodedCredential))
+        XCTAssert(!description.contains(username))
+        XCTAssert(!description.contains(token))
+        XCTAssert(!description.contains("raw response"))
+    }
 }
 
 private extension JSONEncoder {

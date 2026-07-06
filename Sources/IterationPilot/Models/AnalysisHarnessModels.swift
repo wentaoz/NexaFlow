@@ -287,7 +287,8 @@ struct HarnessSourceCellRef: Codable, Hashable {
         var result = ""
         while number > 0 {
             let remainder = (number - 1) % 26
-            result = String(UnicodeScalar(65 + remainder)!) + result
+            guard let scalar = UnicodeScalar(65 + remainder) else { break }
+            result = String(scalar) + result
             number = (number - 1) / 26
         }
         return result

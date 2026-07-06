@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum ConfluenceError: LocalizedError {
     case missingToken
@@ -14,19 +15,21 @@ enum ConfluenceError: LocalizedError {
             return "Confluence Base URL 无效。"
         case .invalidResponse:
             return "Confluence 返回数据无法解析。"
-        case .requestFailed(let statusCode, let url, let body):
+        case .requestFailed(let statusCode, _, _):
             if statusCode == 404 {
-                return "Confluence 请求失败：HTTP 404。请检查 Base URL 是否只填写站点根地址、Root Page ID 是否存在，以及当前 token 是否有该页面权限。请求：\(url)。返回：\(body)"
+                return "Confluence 请求失败：HTTP 404。请检查 Base URL 是否只填写站点根地址、Root Page ID 是否存在，以及当前 token 是否有该页面权限。"
             }
             if statusCode == 401 || statusCode == 403 {
-                return "Confluence 请求失败：HTTP \(statusCode)。Token 无效、过期，或没有页面权限。请求：\(url)。返回：\(body)"
+                return "Confluence 请求失败：HTTP \(statusCode)。Token 无效、过期，或没有页面权限。"
             }
-            return "Confluence 请求失败：HTTP \(statusCode)。请求：\(url)。返回：\(body)"
+            return "Confluence 请求失败：HTTP \(statusCode)。请检查网络、Base URL 和 Token 配置。"
         }
     }
 }
 
 struct ConfluenceService {
+    private static let logger = Logger(subsystem: "NexaFlow", category: "Confluence")
+
     func testConnection(settings: ConfluenceSettings) async throws -> String {
         let token = try resolveToken(settings: settings)
         var identityText: String?
@@ -181,6 +184,7 @@ struct ConfluenceService {
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             let body = String(data: data.prefix(500), encoding: .utf8) ?? ""
+            Self.logger.error("Request failed: status=\(http.statusCode, privacy: .public), url=\(url.absoluteString, privacy: .private), body=\(body, privacy: .private)")
             throw ConfluenceError.requestFailed(statusCode: http.statusCode, url: url.absoluteString, body: body)
         }
 
