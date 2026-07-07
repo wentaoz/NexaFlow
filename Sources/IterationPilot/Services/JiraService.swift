@@ -61,7 +61,10 @@ struct JiraService {
 
     private func fetchSearchPage(source: JiraProjectSource, startAt: Int, maxResults: Int) async throws -> JiraSearchResponse {
         let trimmedBaseURL = source.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let baseURL = URL(string: trimmedBaseURL), !trimmedBaseURL.isEmpty else {
+        guard let baseURL = URL(string: trimmedBaseURL),
+              baseURL.scheme?.lowercased() == "https",
+              baseURL.host != nil,
+              !trimmedBaseURL.isEmpty else {
             throw JiraServiceError.invalidBaseURL
         }
 
@@ -118,7 +121,7 @@ struct JiraService {
         )
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw JiraServiceError.invalidResponse
         }

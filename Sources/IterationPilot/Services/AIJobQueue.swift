@@ -105,10 +105,22 @@ struct AIJobQueue {
         settings: AISettings,
         jobType: String,
         validation: @escaping (String) -> [String] = { _ in [] },
+        correctionPrompt: @escaping (_ originalPrompt: String, _ output: String, _ warnings: [String]) -> String = { originalPrompt, output, warnings in
+            """
+            \(originalPrompt)
+
+            上一次流式输出未通过本地校验，请只根据下列问题重写最终回答，不要重复错误结论。
+            校验问题：\(warnings.joined(separator: "；"))
+
+            上一次输出：
+            \(output)
+            """
+        },
         onProgress: @escaping (_ progressText: String) async -> Void = { _ in },
         onDelta: @escaping (_ accumulatedText: String) async -> Void
     ) async throws -> (output: String, record: AIJobRecord) {
         var record = AIJobRecord(jobType: jobType, status: .waiting, maxAttempts: maxAttempts)
+        var currentPrompt = prompt
         var lastError = ""
 
         for attempt in 1...maxAttempts {
@@ -122,7 +134,7 @@ struct AIJobQueue {
             do {
                 try Task.checkCancellation()
                 let result = try await AIStreamingService().runStreamingAnalysis(
-                    prompt: prompt,
+                    prompt: currentPrompt,
                     settings: settings,
                     onProgress: onProgress,
                     onDelta: onDelta
@@ -145,7 +157,8 @@ struct AIJobQueue {
                 lastError = warnings.joined(separator: "；")
                 record.lastError = lastError
                 record.status = .correcting
-                record.logs.append(AIReasoningLogEntry(step: jobType, status: .correcting, detail: "流式输出校验未通过：\(lastError)。"))
+                record.logs.append(AIReasoningLogEntry(step: jobType, status: .correcting, detail: "流式输出校验未通过：\(lastError)。已自动要求模型修正。"))
+                currentPrompt = correctionPrompt(prompt, result.output, warnings)
             } catch {
                 if error is CancellationError {
                     record.status = .cancelled
@@ -211,7 +224,7 @@ struct AIJobQueue {
                 return false
             }
         }
-        return true
+        return false
     }
 }
 

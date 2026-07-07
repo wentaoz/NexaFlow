@@ -3,6 +3,12 @@ import Foundation
 
 enum DataImportService {
     static func importDataPack(from folderURL: URL) throws -> DataPack {
+        try SecurityScopedResource.access(folderURL) {
+            try importDataPackUnlocked(from: folderURL)
+        }
+    }
+
+    private static func importDataPackUnlocked(from folderURL: URL) throws -> DataPack {
         let manifest = try loadManifest(from: folderURL)
         let period = manifest.period.isEmpty ? folderURL.lastPathComponent : manifest.period
 
@@ -47,28 +53,30 @@ enum DataImportService {
     static func importReports(from urls: [URL]) throws -> (reports: [ImportedReport], fieldDefinitions: [ReportFieldDefinition]) {
         var reports: [ImportedReport] = []
         for url in urls {
-            let fingerprint = sourceFingerprint(for: url)
-            switch url.pathExtension.lowercased() {
-            case "csv", "tsv":
-                reports.append(try importedReport(
-                    fileName: url.lastPathComponent,
-                    sourceFileName: url.lastPathComponent,
-                    sourceFingerprint: fingerprint,
-                    table: CSVParser.parse(fileURL: url)
-                ))
-            case "xlsx", "xls":
-                let tables = try ExcelParser.parse(fileURL: url)
-                for table in tables {
-                    let name = [url.lastPathComponent, table.sheetName].compactMap { $0?.nilIfBlank }.joined(separator: " / ")
+            try SecurityScopedResource.access(url) {
+                let fingerprint = sourceFingerprint(for: url)
+                switch url.pathExtension.lowercased() {
+                case "csv", "tsv":
                     reports.append(try importedReport(
-                        fileName: name,
+                        fileName: url.lastPathComponent,
                         sourceFileName: url.lastPathComponent,
                         sourceFingerprint: fingerprint,
-                        table: table
+                        table: CSVParser.parse(fileURL: url)
                     ))
+                case "xlsx", "xls":
+                    let tables = try ExcelParser.parse(fileURL: url)
+                    for table in tables {
+                        let name = [url.lastPathComponent, table.sheetName].compactMap { $0?.nilIfBlank }.joined(separator: " / ")
+                        reports.append(try importedReport(
+                            fileName: name,
+                            sourceFileName: url.lastPathComponent,
+                            sourceFingerprint: fingerprint,
+                            table: table
+                        ))
+                    }
+                default:
+                    break
                 }
-            default:
-                continue
             }
         }
         return (reports, buildFieldDefinitions(for: reports))
@@ -305,7 +313,18 @@ enum DataImportService {
     }
 
     private static func sourceFingerprint(for url: URL) -> String {
-        guard let data = try? Data(contentsOf: url) else {
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            var hasher = SHA256()
+            while true {
+                let chunk = try handle.read(upToCount: 1_048_576) ?? Data()
+                guard !chunk.isEmpty else { break }
+                hasher.update(data: chunk)
+            }
+            let digest = hasher.finalize()
+            return digest.map { String(format: "%02x", $0) }.joined()
+        } catch {
             let attributes = (try? FileManager.default.attributesOfItem(atPath: url.path)) ?? [:]
             let size = attributes[.size] as? NSNumber
             let modified = attributes[.modificationDate] as? Date
@@ -313,8 +332,6 @@ enum DataImportService {
                 .compactMap { $0 }
                 .joined(separator: "|")
         }
-        let digest = SHA256.hash(data: data)
-        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     private static func actionableWarnings(_ warnings: [String]) -> [String] {

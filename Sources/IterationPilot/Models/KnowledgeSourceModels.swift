@@ -182,6 +182,8 @@ struct DingTalkDocumentSourceDraft: Hashable {
 }
 
 struct DingTalkDocumentSource: Identifiable, Codable, Hashable {
+    private static let clientSecretService = "com.nexaflow.dingtalk-document-source"
+
     var id: UUID
     var businessSpaceID: UUID
     var displayName: String
@@ -251,6 +253,96 @@ struct DingTalkDocumentSource: Identifiable, Codable, Hashable {
         self.lastSkippedCount = lastSkippedCount
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case businessSpaceID
+        case displayName
+        case clientID
+        case clientSecret
+        case agentID
+        case operatorID
+        case defaultSpaceID
+        case folderInputs
+        case titleKeywords
+        case excludedTitleKeywords
+        case isEnabled
+        case syncSchedule
+        case maxDocuments
+        case lastSyncAt
+        case lastDocumentCount
+        case lastAddedCount
+        case lastUpdatedCount
+        case lastFailedCount
+        case lastSkippedCount
+        case createdAt
+        case updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedID = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        let legacySecret = try container.decodeIfPresent(String.self, forKey: .clientSecret) ?? ""
+        self.init(
+            id: decodedID,
+            businessSpaceID: try container.decode(UUID.self, forKey: .businessSpaceID),
+            displayName: try container.decodeIfPresent(String.self, forKey: .displayName) ?? "钉钉文档源",
+            clientID: try container.decodeIfPresent(String.self, forKey: .clientID) ?? "",
+            clientSecret: AppSecureStorage.secret(
+                legacyPlaintext: legacySecret,
+                service: Self.clientSecretService,
+                account: decodedID.uuidString
+            ),
+            agentID: try container.decodeIfPresent(String.self, forKey: .agentID) ?? "",
+            operatorID: try container.decodeIfPresent(String.self, forKey: .operatorID) ?? "",
+            defaultSpaceID: try container.decodeIfPresent(String.self, forKey: .defaultSpaceID) ?? "",
+            folderInputs: try container.decodeIfPresent(String.self, forKey: .folderInputs) ?? "",
+            titleKeywords: try container.decodeIfPresent(String.self, forKey: .titleKeywords) ?? "",
+            excludedTitleKeywords: try container.decodeIfPresent(String.self, forKey: .excludedTitleKeywords) ?? "",
+            isEnabled: try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true,
+            syncSchedule: try container.decodeIfPresent(KnowledgeSyncSchedule.self, forKey: .syncSchedule) ?? .manual,
+            maxDocuments: try container.decodeIfPresent(Int.self, forKey: .maxDocuments) ?? 100,
+            lastSyncAt: try container.decodeIfPresent(Date.self, forKey: .lastSyncAt),
+            lastDocumentCount: try container.decodeIfPresent(Int.self, forKey: .lastDocumentCount) ?? 0,
+            lastAddedCount: try container.decodeIfPresent(Int.self, forKey: .lastAddedCount) ?? 0,
+            lastUpdatedCount: try container.decodeIfPresent(Int.self, forKey: .lastUpdatedCount) ?? 0,
+            lastFailedCount: try container.decodeIfPresent(Int.self, forKey: .lastFailedCount) ?? 0,
+            lastSkippedCount: try container.decodeIfPresent(Int.self, forKey: .lastSkippedCount) ?? 0,
+            createdAt: try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(),
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(businessSpaceID, forKey: .businessSpaceID)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(clientID, forKey: .clientID)
+        if !clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            AppSecureStorage.storePassword(clientSecret, service: Self.clientSecretService, account: id.uuidString)
+        } else {
+            AppSecureStorage.deletePassword(service: Self.clientSecretService, account: id.uuidString)
+        }
+        try container.encode("", forKey: .clientSecret)
+        try container.encode(agentID, forKey: .agentID)
+        try container.encodeIfPresent(operatorID, forKey: .operatorID)
+        try container.encode(defaultSpaceID, forKey: .defaultSpaceID)
+        try container.encode(folderInputs, forKey: .folderInputs)
+        try container.encode(titleKeywords, forKey: .titleKeywords)
+        try container.encode(excludedTitleKeywords, forKey: .excludedTitleKeywords)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(syncSchedule, forKey: .syncSchedule)
+        try container.encode(maxDocuments, forKey: .maxDocuments)
+        try container.encodeIfPresent(lastSyncAt, forKey: .lastSyncAt)
+        try container.encode(lastDocumentCount, forKey: .lastDocumentCount)
+        try container.encode(lastAddedCount, forKey: .lastAddedCount)
+        try container.encode(lastUpdatedCount, forKey: .lastUpdatedCount)
+        try container.encode(lastFailedCount, forKey: .lastFailedCount)
+        try container.encode(lastSkippedCount, forKey: .lastSkippedCount)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 
     var parsedFolderInputs: [String] {
@@ -436,6 +528,8 @@ struct JiraProjectSourceDraft: Hashable {
 }
 
 struct JiraProjectSource: Identifiable, Codable, Hashable {
+    private static let tokenService = "com.nexaflow.jira-project-source"
+
     var id: UUID
     var businessSpaceID: UUID
     var displayName: String
@@ -496,6 +590,87 @@ struct JiraProjectSource: Identifiable, Codable, Hashable {
         self.lastFailedCount = lastFailedCount
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case businessSpaceID
+        case displayName
+        case baseURL
+        case authMode
+        case username
+        case token
+        case projectKey
+        case jql
+        case isEnabled
+        case syncSchedule
+        case maxIssues
+        case lastSyncAt
+        case lastIssueCount
+        case lastAddedCount
+        case lastUpdatedCount
+        case lastFailedCount
+        case createdAt
+        case updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedID = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        let legacyToken = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
+        self.init(
+            id: decodedID,
+            businessSpaceID: try container.decode(UUID.self, forKey: .businessSpaceID),
+            displayName: try container.decodeIfPresent(String.self, forKey: .displayName) ?? "Jira 项目源",
+            baseURL: try container.decodeIfPresent(String.self, forKey: .baseURL) ?? "",
+            authMode: try container.decodeIfPresent(JiraAuthMode.self, forKey: .authMode) ?? .cloudAPIToken,
+            username: try container.decodeIfPresent(String.self, forKey: .username) ?? "",
+            token: AppSecureStorage.secret(
+                legacyPlaintext: legacyToken,
+                service: Self.tokenService,
+                account: decodedID.uuidString
+            ),
+            projectKey: try container.decodeIfPresent(String.self, forKey: .projectKey) ?? "",
+            jql: try container.decodeIfPresent(String.self, forKey: .jql) ?? "",
+            isEnabled: try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true,
+            syncSchedule: try container.decodeIfPresent(KnowledgeSyncSchedule.self, forKey: .syncSchedule) ?? .manual,
+            maxIssues: try container.decodeIfPresent(Int.self, forKey: .maxIssues) ?? 100,
+            lastSyncAt: try container.decodeIfPresent(Date.self, forKey: .lastSyncAt),
+            lastIssueCount: try container.decodeIfPresent(Int.self, forKey: .lastIssueCount) ?? 0,
+            lastAddedCount: try container.decodeIfPresent(Int.self, forKey: .lastAddedCount) ?? 0,
+            lastUpdatedCount: try container.decodeIfPresent(Int.self, forKey: .lastUpdatedCount) ?? 0,
+            lastFailedCount: try container.decodeIfPresent(Int.self, forKey: .lastFailedCount) ?? 0,
+            createdAt: try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(),
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(businessSpaceID, forKey: .businessSpaceID)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(authMode, forKey: .authMode)
+        try container.encode(username, forKey: .username)
+        if !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            AppSecureStorage.storePassword(token, service: Self.tokenService, account: id.uuidString)
+        } else {
+            AppSecureStorage.deletePassword(service: Self.tokenService, account: id.uuidString)
+        }
+        try container.encode("", forKey: .token)
+        try container.encode(projectKey, forKey: .projectKey)
+        try container.encode(jql, forKey: .jql)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(syncSchedule, forKey: .syncSchedule)
+        try container.encode(maxIssues, forKey: .maxIssues)
+        try container.encodeIfPresent(lastSyncAt, forKey: .lastSyncAt)
+        try container.encode(lastIssueCount, forKey: .lastIssueCount)
+        try container.encode(lastAddedCount, forKey: .lastAddedCount)
+        try container.encode(lastUpdatedCount, forKey: .lastUpdatedCount)
+        try container.encode(lastFailedCount, forKey: .lastFailedCount)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 }
 

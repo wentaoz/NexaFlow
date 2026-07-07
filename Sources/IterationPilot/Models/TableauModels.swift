@@ -122,6 +122,8 @@ struct TableauSourceDraft: Hashable {
 }
 
 struct TableauSource: Identifiable, Codable, Hashable {
+    private static let patTokenService = "com.nexaflow.tableau-source"
+
     var id: UUID
     var businessSpaceID: UUID
     var displayName: String
@@ -170,6 +172,75 @@ struct TableauSource: Identifiable, Codable, Hashable {
         self.lastTestedAt = lastTestedAt
         self.lastImportAt = lastImportAt
         self.lastStatusMessage = lastStatusMessage
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case businessSpaceID
+        case displayName
+        case baseURL
+        case siteContentURL
+        case patName
+        case patToken
+        case projectFilter
+        case workbookFilter
+        case isEnabled
+        case createdAt
+        case updatedAt
+        case lastTestedAt
+        case lastImportAt
+        case lastStatusMessage
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedID = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        let legacyToken = try container.decodeIfPresent(String.self, forKey: .patToken) ?? ""
+        self.init(
+            id: decodedID,
+            businessSpaceID: try container.decode(UUID.self, forKey: .businessSpaceID),
+            displayName: try container.decodeIfPresent(String.self, forKey: .displayName) ?? "Tableau 源",
+            baseURL: try container.decodeIfPresent(String.self, forKey: .baseURL) ?? "",
+            siteContentURL: try container.decodeIfPresent(String.self, forKey: .siteContentURL) ?? "",
+            patName: try container.decodeIfPresent(String.self, forKey: .patName) ?? "",
+            patToken: AppSecureStorage.secret(
+                legacyPlaintext: legacyToken,
+                service: Self.patTokenService,
+                account: decodedID.uuidString
+            ),
+            projectFilter: try container.decodeIfPresent(String.self, forKey: .projectFilter) ?? "",
+            workbookFilter: try container.decodeIfPresent(String.self, forKey: .workbookFilter) ?? "",
+            isEnabled: try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true,
+            createdAt: try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(),
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date(),
+            lastTestedAt: try container.decodeIfPresent(Date.self, forKey: .lastTestedAt),
+            lastImportAt: try container.decodeIfPresent(Date.self, forKey: .lastImportAt),
+            lastStatusMessage: try container.decodeIfPresent(String.self, forKey: .lastStatusMessage) ?? ""
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(businessSpaceID, forKey: .businessSpaceID)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(siteContentURL, forKey: .siteContentURL)
+        try container.encode(patName, forKey: .patName)
+        if !patToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            AppSecureStorage.storePassword(patToken, service: Self.patTokenService, account: id.uuidString)
+        } else {
+            AppSecureStorage.deletePassword(service: Self.patTokenService, account: id.uuidString)
+        }
+        try container.encode("", forKey: .patToken)
+        try container.encode(projectFilter, forKey: .projectFilter)
+        try container.encode(workbookFilter, forKey: .workbookFilter)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encodeIfPresent(lastTestedAt, forKey: .lastTestedAt)
+        try container.encodeIfPresent(lastImportAt, forKey: .lastImportAt)
+        try container.encode(lastStatusMessage, forKey: .lastStatusMessage)
     }
 }
 

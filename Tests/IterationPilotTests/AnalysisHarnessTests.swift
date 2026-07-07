@@ -693,6 +693,12 @@ final class AnalysisHarnessTests: XCTestCase {
     func testSQLLikePatternEscapesWildcardsAndStringLiterals() {
         XCTAssert(AnalysisSQLRuntime.sqlLikePattern(#"a%b_c\d'e"#) == #"a\%b\_c\\d''e"#)
     }
+    func testReadOnlySQLValidatorBlocksDuckDBFileReaders() {
+        XCTAssert(AnalysisSQLRuntime.validateReadOnlySQL("SELECT metric, value FROM report_1_raw") == nil)
+        XCTAssert(AnalysisSQLRuntime.validateReadOnlySQL("SELECT * FROM read_csv_auto('/etc/passwd')") != nil)
+        XCTAssert(AnalysisSQLRuntime.validateReadOnlySQL("SELECT * FROM read_parquet('/tmp/data.parquet')") != nil)
+        XCTAssert(AnalysisSQLRuntime.validateReadOnlySQL("WITH x AS (SELECT * FROM parquet_scan('/tmp/a.parquet')) SELECT * FROM x") != nil)
+    }
     func testNotebookRequestedMetricSQLUsesLikeEscapeAndRuns() throws {
         let report = makeReport(
             headers: ["指标", "2025-07", "2026-01"],

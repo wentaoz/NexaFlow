@@ -1,6 +1,9 @@
 import Foundation
 
 struct SearchAPISettings: Codable, Equatable {
+    private static let tavilyAPIKeyService = "com.nexaflow.search-settings"
+    private static let tavilyAPIKeyAccount = "tavily-api-key"
+
     var tavilyEndpoint: String
     var tavilyAPIKey: String
     var didImportRivalRadarSources: Bool
@@ -40,10 +43,36 @@ struct SearchAPISettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         tavilyEndpoint = try container.decodeIfPresent(String.self, forKey: .tavilyEndpoint) ?? Self.default.tavilyEndpoint
-        tavilyAPIKey = try container.decodeIfPresent(String.self, forKey: .tavilyAPIKey) ?? ""
+        let legacyAPIKey = try container.decodeIfPresent(String.self, forKey: .tavilyAPIKey) ?? ""
+        tavilyAPIKey = AppSecureStorage.secret(
+            legacyPlaintext: legacyAPIKey,
+            service: Self.tavilyAPIKeyService,
+            account: Self.tavilyAPIKeyAccount
+        )
         didImportRivalRadarSources = try container.decodeIfPresent(Bool.self, forKey: .didImportRivalRadarSources) ?? false
         didImportMexicoEventSources = try container.decodeIfPresent(Bool.self, forKey: .didImportMexicoEventSources) ?? false
         didImportMexicoUtilitySources = try container.decodeIfPresent(Bool.self, forKey: .didImportMexicoUtilitySources) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(tavilyEndpoint, forKey: .tavilyEndpoint)
+        if !tavilyAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            AppSecureStorage.storePassword(
+                tavilyAPIKey,
+                service: Self.tavilyAPIKeyService,
+                account: Self.tavilyAPIKeyAccount
+            )
+        } else {
+            AppSecureStorage.deletePassword(
+                service: Self.tavilyAPIKeyService,
+                account: Self.tavilyAPIKeyAccount
+            )
+        }
+        try container.encode("", forKey: .tavilyAPIKey)
+        try container.encode(didImportRivalRadarSources, forKey: .didImportRivalRadarSources)
+        try container.encode(didImportMexicoEventSources, forKey: .didImportMexicoEventSources)
+        try container.encode(didImportMexicoUtilitySources, forKey: .didImportMexicoUtilitySources)
     }
 }
 
@@ -149,6 +178,8 @@ struct ReferenceSourceDraft: Identifiable, Hashable {
 }
 
 struct ExternalReferenceSource: Identifiable, Codable, Hashable {
+    private static let apiKeyService = "com.nexaflow.external-reference-source"
+
     var id: UUID
     var isGlobal: Bool
     var businessSpaceIDs: [UUID]
@@ -318,8 +349,10 @@ struct ExternalReferenceSource: Identifiable, Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedID = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        let legacyAPIKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
         self.init(
-            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            id: decodedID,
             isGlobal: try container.decodeIfPresent(Bool.self, forKey: .isGlobal) ?? false,
             businessSpaceIDs: try container.decodeIfPresent([UUID].self, forKey: .businessSpaceIDs) ?? [],
             businessDomainIDs: try container.decodeIfPresent([UUID].self, forKey: .businessDomainIDs) ?? [],
@@ -334,7 +367,11 @@ struct ExternalReferenceSource: Identifiable, Codable, Hashable {
             url: try container.decodeIfPresent(String.self, forKey: .url) ?? "",
             keywordsText: try container.decodeIfPresent(String.self, forKey: .keywordsText) ?? "",
             queryTemplate: try container.decodeIfPresent(String.self, forKey: .queryTemplate) ?? "",
-            apiKey: try container.decodeIfPresent(String.self, forKey: .apiKey) ?? "",
+            apiKey: AppSecureStorage.secret(
+                legacyPlaintext: legacyAPIKey,
+                service: Self.apiKeyService,
+                account: decodedID.uuidString
+            ),
             searchTitlePath: try container.decodeIfPresent(String.self, forKey: .searchTitlePath) ?? "title",
             searchURLPath: try container.decodeIfPresent(String.self, forKey: .searchURLPath) ?? "url",
             competitorName: try container.decodeIfPresent(String.self, forKey: .competitorName) ?? "",
@@ -354,6 +391,49 @@ struct ExternalReferenceSource: Identifiable, Codable, Hashable {
             manualNote: try container.decodeIfPresent(String.self, forKey: .manualNote) ?? "",
             lastFetchedAt: try container.decodeIfPresent(Date.self, forKey: .lastFetchedAt)
         )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(isGlobal, forKey: .isGlobal)
+        try container.encode(businessSpaceIDs, forKey: .businessSpaceIDs)
+        try container.encode(businessDomainIDs, forKey: .businessDomainIDs)
+        try container.encode(lifecycleStatus, forKey: .lifecycleStatus)
+        try container.encode(recommendationReason, forKey: .recommendationReason)
+        try container.encode(possibleImpactedMetricsText, forKey: .possibleImpactedMetricsText)
+        try container.encode(officialDomainHint, forKey: .officialDomainHint)
+        try container.encode(createdByAI, forKey: .createdByAI)
+        try container.encode(name, forKey: .name)
+        try container.encode(domain, forKey: .domain)
+        try container.encode(collectorType, forKey: .collectorType)
+        try container.encode(url, forKey: .url)
+        try container.encode(keywordsText, forKey: .keywordsText)
+        try container.encode(queryTemplate, forKey: .queryTemplate)
+        if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            AppSecureStorage.storePassword(apiKey, service: Self.apiKeyService, account: id.uuidString)
+        } else {
+            AppSecureStorage.deletePassword(service: Self.apiKeyService, account: id.uuidString)
+        }
+        try container.encode("", forKey: .apiKey)
+        try container.encode(searchTitlePath, forKey: .searchTitlePath)
+        try container.encode(searchURLPath, forKey: .searchURLPath)
+        try container.encode(competitorName, forKey: .competitorName)
+        try container.encode(competitorAliasesText, forKey: .competitorAliasesText)
+        try container.encode(tavilyTopic, forKey: .tavilyTopic)
+        try container.encode(tavilySearchDepth, forKey: .tavilySearchDepth)
+        try container.encode(tavilyTimeRange, forKey: .tavilyTimeRange)
+        try container.encode(tavilyMaxResults, forKey: .tavilyMaxResults)
+        try container.encode(tavilyIncludeRawContent, forKey: .tavilyIncludeRawContent)
+        try container.encode(tavilyIncludeDomainsText, forKey: .tavilyIncludeDomainsText)
+        try container.encode(tavilyExcludeDomainsText, forKey: .tavilyExcludeDomainsText)
+        try container.encode(tavilyCountry, forKey: .tavilyCountry)
+        try container.encode(tavilyLanguageHintsText, forKey: .tavilyLanguageHintsText)
+        try container.encode(tavilyQueryGroup, forKey: .tavilyQueryGroup)
+        try container.encode(tavilySourceProfile, forKey: .tavilySourceProfile)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(manualNote, forKey: .manualNote)
+        try container.encodeIfPresent(lastFetchedAt, forKey: .lastFetchedAt)
     }
 
     static let defaults: [ExternalReferenceSource] = [

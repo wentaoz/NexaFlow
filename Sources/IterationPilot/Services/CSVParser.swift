@@ -21,6 +21,7 @@ typealias CSVTable = ParsedTable
 
 enum CSVParser {
     static func parse(fileURL: URL) throws -> CSVTable {
+        try ImportFileSizePolicy.validateSingleFile(fileURL)
         let data = try Data(contentsOf: fileURL)
         guard let decoded = decode(data) else {
             throw ImportError.unreadableFile(fileURL.lastPathComponent)
@@ -468,6 +469,7 @@ enum ImportError: LocalizedError {
     case unreadableFile(String)
     case unsupportedFolder(String)
     case unsupportedFile(String)
+    case fileTooLarge(String, maxMegabytes: Int)
 
     var errorDescription: String? {
         switch self {
@@ -477,6 +479,8 @@ enum ImportError: LocalizedError {
             return "文件夹中没有可识别的数据文件：\(folder)"
         case .unsupportedFile(let file):
             return "暂不支持该文件格式：\(file)"
+        case .fileTooLarge(let file, let maxMegabytes):
+            return "\(file) 大小超过 \(maxMegabytes) MB。请先拆分、抽样或导出更小的表格后再导入。"
         }
     }
 }

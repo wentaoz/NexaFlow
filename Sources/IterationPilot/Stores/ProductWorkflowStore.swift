@@ -374,6 +374,9 @@ public final class ProductWorkflowStore: ObservableObject {
         let aiRecordLimit = 100
         let sourceLogLimitPerRun = 60
         let textLimit = 1_200
+        let referenceItemLimit = 2_000
+        let dingtalkDocumentItemLimit = 2_000
+        let jiraEvidenceLimit = 3_000
 
         for index in workspace.persistentAIJobs.indices {
             if workspace.persistentAIJobs[index].logs.count > aiLogLimit {
@@ -426,6 +429,21 @@ public final class ProductWorkflowStore: ObservableObject {
                     didChange = true
                 }
             }
+        }
+
+        if workspace.referenceItems.count > referenceItemLimit {
+            workspace.referenceItems = Array(workspace.referenceItems.sorted { $0.collectedAt > $1.collectedAt }.prefix(referenceItemLimit))
+            didChange = true
+        }
+        if workspace.dingtalkDocumentItems.count > dingtalkDocumentItemLimit {
+            workspace.dingtalkDocumentItems = Array(workspace.dingtalkDocumentItems.sorted { $0.syncedAt > $1.syncedAt }.prefix(dingtalkDocumentItemLimit))
+            didChange = true
+        }
+        if workspace.jiraProjectEvidences.count > jiraEvidenceLimit {
+            workspace.jiraProjectEvidences = Array(workspace.jiraProjectEvidences.sorted {
+                ($0.updatedAt ?? $0.createdAt ?? .distantPast) > ($1.updatedAt ?? $1.createdAt ?? .distantPast)
+            }.prefix(jiraEvidenceLimit))
+            didChange = true
         }
 
         return didChange
@@ -881,8 +899,6 @@ public final class ProductWorkflowStore: ObservableObject {
 
     private func localImportBlocker(for urls: [URL]) -> String? {
         let maxFileCount = 40
-        let maxSingleFileBytes: Int64 = 80 * 1_024 * 1_024
-        let maxTotalBytes: Int64 = 250 * 1_024 * 1_024
         guard urls.count <= maxFileCount else {
             return "本次选择了 \(urls.count) 个文件，超过一次导入上限 \(maxFileCount) 个。请分批导入。"
         }
@@ -893,17 +909,17 @@ public final class ProductWorkflowStore: ObservableObject {
             guard ["csv", "tsv", "xlsx", "xls"].contains(extensionName) else {
                 return "不支持的文件类型：\(url.lastPathComponent)。请选择 CSV、TSV、XLSX 或 XLS。"
             }
-            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
             if values?.isRegularFile == false {
                 return "只能导入表格文件，不能导入文件夹：\(url.lastPathComponent)。"
             }
-            let fileSize = Int64(values?.fileSize ?? 0)
-            if fileSize > maxSingleFileBytes {
+            let fileSize = ImportFileSizePolicy.fileSize(url) ?? 0
+            if fileSize > ImportFileSizePolicy.maxSingleFileBytes {
                 return "\(url.lastPathComponent) 大小超过 80 MB。请先拆分、抽样或导出更小的表格后再导入。"
             }
             totalBytes += fileSize
         }
-        if totalBytes > maxTotalBytes {
+        if totalBytes > ImportFileSizePolicy.maxTotalBytes {
             return "本次导入总大小超过 250 MB。请分批导入，避免 App 解析时内存过高。"
         }
         return nil

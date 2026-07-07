@@ -131,7 +131,7 @@ struct DingTalkDocumentService {
             "appSecret": clientSecret
         ])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw DingTalkDocumentServiceError.invalidResponse
         }
@@ -229,7 +229,7 @@ struct DingTalkDocumentService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(token, forHTTPHeaderField: "x-acs-dingtalk-access-token")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw DingTalkDocumentServiceError.invalidResponse
         }
@@ -310,7 +310,7 @@ struct DingTalkDocumentService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(token, forHTTPHeaderField: "x-acs-dingtalk-access-token")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw DingTalkDocumentServiceError.invalidResponse
         }

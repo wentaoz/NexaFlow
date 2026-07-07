@@ -2,11 +2,12 @@
 set -euo pipefail
 
 APP_NAME="NexaFlow"
+APP_VERSION="${NEXAFLOW_RELEASE_VERSION:-1.0.2}"
 APP_BUNDLE="dist/$APP_NAME.app"
 RELEASE_ROOT="artifacts/release"
 DATE_DIR="$RELEASE_ROOT/$(date +%F)"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-DMG_BASENAME="$APP_NAME-1.0-universal-$STAMP"
+DMG_BASENAME="$APP_NAME-$APP_VERSION-universal-$STAMP"
 ALLOW_HYBRID="${ALLOW_HYBRID_DMG:-0}"
 STANDARD_ONLY=0
 
@@ -66,7 +67,9 @@ EOF
   cat >"$stable_launcher" <<EOF
 #!/bin/zsh
 set -euo pipefail
-cd "$ROOT_DIR"
+SCRIPT_DIR="\${0:A:h}"
+ROOT_DIR="\$(cd "\$SCRIPT_DIR/.." && pwd)"
+cd "\$ROOT_DIR"
 echo "Packaging $APP_NAME standard DMG outside Codex sandbox..."
 ./script/package_dmg.sh --standard-only
 echo

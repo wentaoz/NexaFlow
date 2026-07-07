@@ -16,6 +16,12 @@ enum LocalKnowledgeFolderSyncService {
     ]
 
     static func parseSupportedFiles(in folderURL: URL) -> (files: [LocalKnowledgeParsedFile], totalFiles: Int, failures: [String]) {
+        SecurityScopedResource.access(folderURL) {
+            parseSupportedFilesUnlocked(in: folderURL)
+        }
+    }
+
+    private static func parseSupportedFilesUnlocked(in folderURL: URL) -> (files: [LocalKnowledgeParsedFile], totalFiles: Int, failures: [String]) {
         let keys: [URLResourceKey] = [.isRegularFileKey, .isHiddenKey, .contentModificationDateKey]
         guard let enumerator = FileManager.default.enumerator(
             at: folderURL,

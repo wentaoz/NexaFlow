@@ -262,7 +262,7 @@ struct TableauService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(session.token, forHTTPHeaderField: "X-Tableau-Auth")
-        _ = try await URLSession.shared.data(for: request)
+        _ = try await NetworkRetry.data(for: request)
     }
 
     private func fetchProjects(source: TableauSource, session: Session) async throws -> [TableauProject] {
@@ -381,7 +381,7 @@ struct TableauService {
     }
 
     private func requestDataOnce(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         try validate(response: response, data: data)
         return (data, response)
     }
@@ -395,7 +395,10 @@ struct TableauService {
     }
 
     private func endpoint(source: TableauSource, path: String, queryItems: [URLQueryItem] = []) throws -> URL {
-        guard var components = URLComponents(string: normalizedBaseURL(source.baseURL) + path) else {
+        let baseURL = normalizedBaseURL(source.baseURL)
+        guard baseURL.hasPrefix("https://"),
+              var components = URLComponents(string: baseURL + path),
+              components.host != nil else {
             throw TableauServiceError.invalidBaseURL
         }
         components.queryItems = queryItems.isEmpty ? nil : queryItems

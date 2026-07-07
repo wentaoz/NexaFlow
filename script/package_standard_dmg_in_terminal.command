@@ -1,6 +1,8 @@
 #!/bin/zsh
 set -euo pipefail
-cd "/Users/WilliamChang/Documents/Playground/IterationPilot"
+SCRIPT_DIR="${0:A:h}"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$ROOT_DIR"
 echo "Packaging NexaFlow standard DMG outside Codex sandbox..."
 ./script/package_dmg.sh --standard-only
 echo

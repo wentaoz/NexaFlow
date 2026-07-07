@@ -35,9 +35,10 @@ await run("AnalysisAnswerPresentationTests.testAcceptsHeadingWithoutSpaceAfterHa
 let reliability = ReliabilityTests()
 await run("ReliabilityTests.testCorruptWorkspaceCreatesBackupAndReturnsCorruptResult") { try reliability.testCorruptWorkspaceCreatesBackupAndReturnsCorruptResult() }
 await run("ReliabilityTests.testWorkspaceSaveAndLoadRoundTrip") { try reliability.testWorkspaceSaveAndLoadRoundTrip() }
-await run("ReliabilityTests.testWorkspaceSavePersistsAIAPIKey") { try reliability.testWorkspaceSavePersistsAIAPIKey() }
+await run("ReliabilityTests.testWorkspaceSaveMovesAIAPIKeyOutOfJSON") { try reliability.testWorkspaceSaveMovesAIAPIKeyOutOfJSON() }
 await run("ReliabilityTests.testWorkspaceAPIKeyDecodesAndResavesWithSecret") { try reliability.testWorkspaceAPIKeyDecodesAndResavesWithSecret() }
 await run("ReliabilityTests.testCancellationErrorIsNotRetryable") { reliability.testCancellationErrorIsNotRetryable() }
+await run("ReliabilityTests.testUnknownErrorIsNotRetryable") { reliability.testUnknownErrorIsNotRetryable() }
 await run("ReliabilityTests.testConfluenceRequestFailedDescriptionDoesNotExposeURLOrBody") { reliability.testConfluenceRequestFailedDescriptionDoesNotExposeURLOrBody() }
 await run("ReliabilityTests.testJiraRequestFailedDescriptionDoesNotExposeCredentialsOrBody") { reliability.testJiraRequestFailedDescriptionDoesNotExposeCredentialsOrBody() }
 
@@ -82,6 +83,7 @@ await run("AnalysisHarnessTests.testOrchestratorBlocksWithoutTables") { try awai
 await run("AnalysisHarnessTests.testRouterDetectsQuickComputationButNotPureExplanation") { harness.testRouterDetectsQuickComputationButNotPureExplanation() }
 await run("AnalysisHarnessTests.testRouterDetectsContextEvidenceQuestions") { harness.testRouterDetectsContextEvidenceQuestions() }
 await run("AnalysisHarnessTests.testSQLLikePatternEscapesWildcardsAndStringLiterals") { harness.testSQLLikePatternEscapesWildcardsAndStringLiterals() }
+await run("AnalysisHarnessTests.testReadOnlySQLValidatorBlocksDuckDBFileReaders") { harness.testReadOnlySQLValidatorBlocksDuckDBFileReaders() }
 await run("AnalysisHarnessTests.testNotebookRequestedMetricSQLUsesLikeEscapeAndRuns") { try harness.testNotebookRequestedMetricSQLUsesLikeEscapeAndRuns() }
 await run("AnalysisHarnessTests.testRouterDowngradesSimpleTasksButKeepsComputationsVerified") { harness.testRouterDowngradesSimpleTasksButKeepsComputationsVerified() }
 await run("AnalysisHarnessTests.testPeriodIntentUsesLatestPeriodRequestBeforeStaleTaskGoal") { harness.testPeriodIntentUsesLatestPeriodRequestBeforeStaleTaskGoal() }

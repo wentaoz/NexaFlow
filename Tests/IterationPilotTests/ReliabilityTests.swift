@@ -31,7 +31,11 @@ final class ReliabilityTests: XCTestCase {
 
         let workspaceURL = directory.appendingPathComponent("workspace.json")
         setenv("NEXAFLOW_WORKSPACE_PATH", workspaceURL.path, 1)
-        defer { unsetenv("NEXAFLOW_WORKSPACE_PATH") }
+        setenv("NEXAFLOW_SECURE_STORAGE_NAMESPACE", "test-\(UUID().uuidString)", 1)
+        defer {
+            unsetenv("NEXAFLOW_SECURE_STORAGE_NAMESPACE")
+            unsetenv("NEXAFLOW_WORKSPACE_PATH")
+        }
 
         let workspace = SampleDataFactory.makeWorkspace()
         try ProductWorkflowStore.saveWorkspace(workspace)
@@ -40,7 +44,7 @@ final class ReliabilityTests: XCTestCase {
         XCTAssert(loaded.businessSpaces.count == workspace.businessSpaces.count)
     }
 
-    func testWorkspaceSavePersistsAIAPIKey() throws {
+    func testWorkspaceSaveMovesAIAPIKeyOutOfJSON() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("nexaflow-workspace-secret-scrub-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -48,19 +52,28 @@ final class ReliabilityTests: XCTestCase {
 
         let workspaceURL = directory.appendingPathComponent("workspace.json")
         setenv("NEXAFLOW_WORKSPACE_PATH", workspaceURL.path, 1)
-        defer { unsetenv("NEXAFLOW_WORKSPACE_PATH") }
+        setenv("NEXAFLOW_SECURE_STORAGE_NAMESPACE", "test-\(UUID().uuidString)", 1)
+        defer {
+            AppSecureStorage.deletePassword(service: "com.nexaflow.ai-settings", account: "default-api-key")
+            unsetenv("NEXAFLOW_SECURE_STORAGE_NAMESPACE")
+            unsetenv("NEXAFLOW_WORKSPACE_PATH")
+        }
 
         var workspace = SampleDataFactory.makeWorkspace()
         workspace.aiSettings.apiKey = "sk-test-secret-should-not-be-on-disk"
         try ProductWorkflowStore.saveWorkspace(workspace)
 
         let rawText = try String(contentsOf: workspaceURL, encoding: .utf8)
-        XCTAssert(rawText.contains("sk-test-secret-should-not-be-on-disk"))
+        XCTAssert(!rawText.contains("sk-test-secret-should-not-be-on-disk"))
 
         let rawJSON = try JSONSerialization.jsonObject(with: Data(rawText.utf8))
         let rawObject = try XCTUnwrap(rawJSON as? [String: Any])
+        XCTAssert(rawObject["schemaVersion"] as? Int == ProductWorkspace.currentSchemaVersion)
         let aiSettings = try XCTUnwrap(rawObject["aiSettings"] as? [String: Any])
-        XCTAssert(aiSettings["apiKey"] as? String == "sk-test-secret-should-not-be-on-disk")
+        XCTAssert(aiSettings["apiKey"] as? String == "")
+
+        let loaded = try XCTUnwrap(ProductWorkflowStore.loadWorkspace())
+        XCTAssert(loaded.aiSettings.apiKey == "sk-test-secret-should-not-be-on-disk")
     }
 
     func testWorkspaceAPIKeyDecodesAndResavesWithSecret() throws {
@@ -71,7 +84,12 @@ final class ReliabilityTests: XCTestCase {
 
         let workspaceURL = directory.appendingPathComponent("workspace.json")
         setenv("NEXAFLOW_WORKSPACE_PATH", workspaceURL.path, 1)
-        defer { unsetenv("NEXAFLOW_WORKSPACE_PATH") }
+        setenv("NEXAFLOW_SECURE_STORAGE_NAMESPACE", "test-\(UUID().uuidString)", 1)
+        defer {
+            AppSecureStorage.deletePassword(service: "com.nexaflow.ai-settings", account: "default-api-key")
+            unsetenv("NEXAFLOW_SECURE_STORAGE_NAMESPACE")
+            unsetenv("NEXAFLOW_WORKSPACE_PATH")
+        }
 
         let legacySecret = "sk-legacy-secret-for-migration"
         var workspace = SampleDataFactory.makeWorkspace()
@@ -89,11 +107,17 @@ final class ReliabilityTests: XCTestCase {
 
         try ProductWorkflowStore.saveWorkspace(workspace)
         let savedText = try String(contentsOf: workspaceURL, encoding: .utf8)
-        XCTAssert(savedText.contains(legacySecret))
+        XCTAssert(!savedText.contains(legacySecret))
+        let reloaded = try XCTUnwrap(ProductWorkflowStore.loadWorkspace())
+        XCTAssert(reloaded.aiSettings.apiKey == legacySecret)
     }
 
     func testCancellationErrorIsNotRetryable() {
         XCTAssert(AIJobQueue.isRetryable(CancellationError()) == false)
+    }
+
+    func testUnknownErrorIsNotRetryable() {
+        XCTAssert(AIJobQueue.isRetryable(NSError(domain: "internal.parse", code: 1)) == false)
     }
 
     func testConfluenceRequestFailedDescriptionDoesNotExposeURLOrBody() {

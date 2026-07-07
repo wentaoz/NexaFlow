@@ -10,11 +10,14 @@ enum WordDocumentExporter {
         )
         let entries = makeDocumentEntries(elements: elements, title: report.title)
 
-        if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.removeItem(at: url)
+        let temporaryURL = url
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        defer {
+            try? FileManager.default.removeItem(at: temporaryURL)
         }
 
-        let archive = try Archive(url: url, accessMode: .create)
+        let archive = try Archive(url: temporaryURL, accessMode: .create)
 
         for entry in entries {
             let data = Data(entry.content.utf8)
@@ -29,6 +32,12 @@ enum WordDocumentExporter {
                 guard start < end else { return Data() }
                 return data.subdata(in: start..<end)
             }
+        }
+
+        if FileManager.default.fileExists(atPath: url.path) {
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: temporaryURL)
+        } else {
+            try FileManager.default.moveItem(at: temporaryURL, to: url)
         }
     }
 

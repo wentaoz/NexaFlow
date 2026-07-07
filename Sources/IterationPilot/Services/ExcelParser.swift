@@ -4,6 +4,7 @@ import Foundation
 
 enum ExcelParser {
     static func parse(fileURL: URL) throws -> [CSVTable] {
+        try ImportFileSizePolicy.validateSingleFile(fileURL)
         switch fileURL.pathExtension.lowercased() {
         case "xlsx":
             return try parseXLSX(fileURL: fileURL)

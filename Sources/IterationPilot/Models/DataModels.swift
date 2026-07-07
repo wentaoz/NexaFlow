@@ -1,6 +1,9 @@
 import Foundation
 
 struct ProductWorkspace: Codable {
+    static let currentSchemaVersion = 2
+
+    var schemaVersion: Int
     var businessSpaces: [BusinessSpace]
     var selectedBusinessSpaceID: UUID?
     var dataPacks: [DataPack]
@@ -38,6 +41,7 @@ struct ProductWorkspace: Codable {
     var referenceCollectionRuns: [ExternalReferenceCollectionRun]
 
     init(
+        schemaVersion: Int = ProductWorkspace.currentSchemaVersion,
         businessSpaces: [BusinessSpace] = [BusinessSpace.defaultSpace],
         selectedBusinessSpaceID: UUID? = nil,
         dataPacks: [DataPack],
@@ -73,6 +77,7 @@ struct ProductWorkspace: Codable {
         referenceItems: [ExternalReferenceItem] = [],
         referenceCollectionRuns: [ExternalReferenceCollectionRun] = []
     ) {
+        self.schemaVersion = schemaVersion
         self.businessSpaces = businessSpaces.isEmpty ? [BusinessSpace.defaultSpace] : businessSpaces
         self.selectedBusinessSpaceID = selectedBusinessSpaceID ?? self.businessSpaces.first?.id
         self.dataPacks = dataPacks
@@ -110,6 +115,7 @@ struct ProductWorkspace: Codable {
     }
 
     enum CodingKeys: String, CodingKey {
+        case schemaVersion
         case businessSpaces
         case selectedBusinessSpaceID
         case dataPacks
@@ -148,6 +154,7 @@ struct ProductWorkspace: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         businessSpaces = try container.decodeIfPresent([BusinessSpace].self, forKey: .businessSpaces) ?? [BusinessSpace.defaultSpace]
         if businessSpaces.isEmpty {
             businessSpaces = [BusinessSpace.defaultSpace]
@@ -3487,6 +3494,9 @@ struct KnowledgeEntry: Identifiable, Codable, Hashable {
 }
 
 struct AISettings: Codable, Equatable {
+    private static let apiKeyService = "com.nexaflow.ai-settings"
+    private static let apiKeyAccount = "default-api-key"
+
     var endpoint: String
     var model: String
     var apiKey: String
@@ -3510,7 +3520,12 @@ struct AISettings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? Self.default.endpoint
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? Self.default.model
-        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        let legacyAPIKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        apiKey = AppSecureStorage.secret(
+            legacyPlaintext: legacyAPIKey,
+            service: Self.apiKeyService,
+            account: Self.apiKeyAccount
+        )
         systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) ?? Self.default.systemPrompt
     }
 
@@ -3518,7 +3533,12 @@ struct AISettings: Codable, Equatable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(endpoint, forKey: .endpoint)
         try container.encode(model, forKey: .model)
-        try container.encode(apiKey, forKey: .apiKey)
+        if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            AppSecureStorage.storePassword(apiKey, service: Self.apiKeyService, account: Self.apiKeyAccount)
+        } else {
+            AppSecureStorage.deletePassword(service: Self.apiKeyService, account: Self.apiKeyAccount)
+        }
+        try container.encode("", forKey: .apiKey)
         try container.encode(systemPrompt, forKey: .systemPrompt)
     }
 
@@ -3757,8 +3777,29 @@ struct ConfluenceSettings: Codable, Equatable {
         titleKeywords = try container.decodeIfPresent(String.self, forKey: .titleKeywords) ?? ""
         keychainService = try container.decodeIfPresent(String.self, forKey: .keychainService) ?? Self.default.keychainService
         keychainAccount = try container.decodeIfPresent(String.self, forKey: .keychainAccount) ?? Self.default.keychainAccount
-        bearerToken = try container.decodeIfPresent(String.self, forKey: .bearerToken) ?? ""
+        let legacyToken = try container.decodeIfPresent(String.self, forKey: .bearerToken) ?? ""
+        bearerToken = AppSecureStorage.secret(
+            legacyPlaintext: legacyToken,
+            service: keychainService,
+            account: keychainAccount
+        )
         maxPages = try container.decodeIfPresent(Int.self, forKey: .maxPages) ?? Self.default.maxPages
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(rootPageIDs, forKey: .rootPageIDs)
+        try container.encode(titleKeywords, forKey: .titleKeywords)
+        try container.encode(keychainService, forKey: .keychainService)
+        try container.encode(keychainAccount, forKey: .keychainAccount)
+        if !bearerToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            AppSecureStorage.storePassword(bearerToken, service: keychainService, account: keychainAccount)
+        } else {
+            AppSecureStorage.deletePassword(service: keychainService, account: keychainAccount)
+        }
+        try container.encode("", forKey: .bearerToken)
+        try container.encode(maxPages, forKey: .maxPages)
     }
 
     var parsedTitleKeywords: [String] {

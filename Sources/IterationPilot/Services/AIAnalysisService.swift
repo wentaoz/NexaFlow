@@ -19,7 +19,7 @@ enum AIAnalysisError: LocalizedError {
 }
 
 struct AIAnalysisService {
-    func runAnalysis(prompt: String, settings: AISettings, timeout: TimeInterval = NetworkTimeouts.longRequest) async throws -> String {
+    func runAnalysis(prompt: String, settings: AISettings, timeout: TimeInterval = NetworkTimeouts.aiRequest) async throws -> String {
         guard !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw AIAnalysisError.missingAPIKey
         }

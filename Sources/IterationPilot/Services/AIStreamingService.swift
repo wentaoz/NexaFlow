@@ -9,7 +9,7 @@ struct AIStreamingService {
     func runStreamingAnalysis(
         prompt: String,
         settings: AISettings,
-        timeout: TimeInterval = NetworkTimeouts.longRequest,
+        timeout: TimeInterval = NetworkTimeouts.aiRequest,
         onProgress: @escaping (_ progressText: String) async -> Void = { _ in },
         onDelta: @escaping (_ accumulatedText: String) async -> Void
     ) async throws -> AIStreamingResult {

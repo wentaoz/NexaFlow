@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum ExternalReferenceCollectorError: LocalizedError {
     case invalidURL(String)
@@ -37,6 +38,7 @@ struct ExternalReferenceCollector {
     }
 
     private static let maxConcurrentSources = 4
+    private static let logger = Logger(subsystem: "NexaFlow", category: "ExternalReference")
 
     func collect(
         sources: [ExternalReferenceSource],
@@ -58,14 +60,15 @@ struct ExternalReferenceCollector {
         collectionRunID: UUID?,
         deadline: Date? = nil
     ) async throws -> CollectionResult {
-        await withTaskGroup(of: SourceCollectionResult.self, returning: CollectionResult.self) { group in
+        let effectiveDeadline = deadline ?? Date().addingTimeInterval(NetworkTimeouts.referenceCollectionRunBudget)
+        return await withTaskGroup(of: SourceCollectionResult.self, returning: CollectionResult.self) { group in
             var nextIndex = 0
             var items: [ExternalReferenceItem] = []
             var sourceLogs: [ExternalReferenceSourceRunLog] = []
 
             func enqueueNextSource() {
                 guard nextIndex < sources.count else { return }
-                if let deadline, Date() >= deadline { return }
+                if Date() >= effectiveDeadline { return }
                 let source = sources[nextIndex]
                 nextIndex += 1
                 group.addTask {
@@ -85,7 +88,7 @@ struct ExternalReferenceCollector {
             while let result = await group.next() {
                 items.append(contentsOf: result.items)
                 sourceLogs.append(result.sourceLog)
-                if let deadline, Date() >= deadline {
+                if Date() >= effectiveDeadline {
                     group.cancelAll()
                     continue
                 }
@@ -185,7 +188,7 @@ struct ExternalReferenceCollector {
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = NetworkTimeouts.externalReferenceRequest
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         try validate(response: response, data: data, service: source.name)
         let html = String(data: data, encoding: .utf8) ?? ""
         let text = Self.htmlToText(html)
@@ -210,7 +213,7 @@ struct ExternalReferenceCollector {
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = NetworkTimeouts.externalReferenceRequest
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         try validate(response: response, data: data, service: source.name)
         let xml = String(data: data, encoding: .utf8) ?? ""
         let rawItems = Self.matches(pattern: "(?is)<item[^>]*>(.*?)</item>", in: xml)
@@ -274,7 +277,7 @@ struct ExternalReferenceCollector {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         try validate(response: response, data: data, service: source.name)
 
         let json: Any
@@ -358,7 +361,7 @@ struct ExternalReferenceCollector {
             country: countryDecision.sentCountry
         ))
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         try validate(response: response, data: data, service: source.name)
         let decoded = try JSONDecoder().decode(TavilyResponse.self, from: data)
 
@@ -383,7 +386,8 @@ struct ExternalReferenceCollector {
         guard let http = response as? HTTPURLResponse else { return }
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data.prefix(400), encoding: .utf8) ?? ""
-            throw ExternalReferenceCollectorError.requestFailed("\(service) HTTP \(http.statusCode) \(body)")
+            Self.logger.error("Request failed: service=\(service, privacy: .public), status=\(http.statusCode, privacy: .public), body=\(body, privacy: .private)")
+            throw ExternalReferenceCollectorError.requestFailed("\(service) HTTP \(http.statusCode)")
         }
     }
 

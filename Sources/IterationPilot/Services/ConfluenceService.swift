@@ -164,7 +164,10 @@ struct ConfluenceService {
         params: [String: String],
         responseType: T.Type
     ) async throws -> T {
-        guard var components = URLComponents(string: normalizedBaseURL(settings.baseURL) + path) else {
+        let baseURL = normalizedBaseURL(settings.baseURL)
+        guard baseURL.hasPrefix("https://"),
+              var components = URLComponents(string: baseURL + path),
+              components.host != nil else {
             throw ConfluenceError.invalidBaseURL
         }
         if !params.isEmpty {
@@ -181,7 +184,7 @@ struct ConfluenceService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("NexaFlow/1.0", forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             let body = String(data: data.prefix(500), encoding: .utf8) ?? ""
             Self.logger.error("Request failed: status=\(http.statusCode, privacy: .public), url=\(url.absoluteString, privacy: .private), body=\(body, privacy: .private)")
@@ -198,6 +201,14 @@ struct ConfluenceService {
     private func resolveToken(settings: ConfluenceSettings) throws -> String {
         let explicit = settings.bearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !explicit.isEmpty { return explicit }
+
+        if let stored = AppSecureStorage.password(
+            service: settings.keychainService,
+            account: settings.keychainAccount
+        )?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !stored.isEmpty {
+            return stored
+        }
 
         if let env = ProcessInfo.processInfo.environment["CONFLUENCE_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines),
            !env.isEmpty {

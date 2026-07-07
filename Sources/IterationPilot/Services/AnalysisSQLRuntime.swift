@@ -129,17 +129,28 @@ enum AnalysisSQLRuntime {
         guard normalized.hasPrefix("select ") || normalized.hasPrefix("with ") else {
             return "只允许 SELECT 或 WITH 只读查询。"
         }
-        let forbidden = [
+        let forbiddenKeywords = [
             "drop", "delete", "update", "insert", "attach", "copy", "install", "load",
-            "read_csv", "read_parquet", "httpfs", "pragma", "create", "alter", "detach",
+            "httpfs", "pragma", "create", "alter", "detach",
             "export", "import", "call", "set", "vacuum"
         ]
         let tokens = normalized
             .replacingOccurrences(of: #"[^a-z0-9_]+"#, with: " ", options: .regularExpression)
             .split(separator: " ")
             .map(String.init)
-        if let bad = forbidden.first(where: { tokens.contains($0) }) {
+        if let bad = forbiddenKeywords.first(where: { tokens.contains($0) }) {
             return "SQL 包含禁止关键字：\(bad)。"
+        }
+        let forbiddenFunctionPatterns: [(name: String, pattern: String)] = [
+            ("read_*", #"\bread_[a-z0-9_]*\s*\("#),
+            ("parquet_scan", #"\bparquet_scan\s*\("#),
+            ("csv_scan", #"\bcsv_scan\s*\("#),
+            ("glob", #"\bglob\s*\("#)
+        ]
+        if let bad = forbiddenFunctionPatterns.first(where: { entry in
+            normalized.range(of: entry.pattern, options: .regularExpression) != nil
+        }) {
+            return "SQL 包含禁止函数：\(bad.name)。"
         }
         return nil
     }
@@ -1293,16 +1304,68 @@ enum AnalysisSQLRuntime {
     private static func parseNumeric(_ text: String) -> Double? {
         var value = text
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: "")
-            .replacingOccurrences(of: "MXN", with: "", options: .caseInsensitive)
-            .replacingOccurrences(of: "$", with: "")
             .replacingOccurrences(of: "％", with: "%")
+            .replacingOccurrences(of: "−", with: "-")
+            .replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .replacingOccurrences(of: #"\b(MXN|USD|EUR|GBP|JPY|CNY|RMB|BRL|CAD|AUD)\b"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"[$€£¥￥₩₹₽₺₴฿₫₱₪₦]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var isNegative = false
+        if value.hasPrefix("("), value.hasSuffix(")") {
+            isNegative = true
+            value.removeFirst()
+            value.removeLast()
+        }
         if value.hasSuffix("%") {
             value.removeLast()
         }
-        value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        value = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00A0}", with: "")
+            .replacingOccurrences(of: "\u{202F}", with: "")
+            .replacingOccurrences(of: "'", with: "")
+        value = normalizedDecimalString(value)
         guard !value.isEmpty else { return nil }
-        return Double(value)
+        guard let number = Double(value) else { return nil }
+        return isNegative ? -abs(number) : number
+    }
+
+    private static func normalizedDecimalString(_ text: String) -> String {
+        let commaCount = text.filter { $0 == "," }.count
+        let dotCount = text.filter { $0 == "." }.count
+        guard commaCount > 0 || dotCount > 0 else { return text }
+
+        if commaCount > 0, dotCount > 0 {
+            let lastComma = text.lastIndex(of: ",") ?? text.startIndex
+            let lastDot = text.lastIndex(of: ".") ?? text.startIndex
+            if lastComma > lastDot {
+                return text
+                    .replacingOccurrences(of: ".", with: "")
+                    .replacingOccurrences(of: ",", with: ".")
+            }
+            return text.replacingOccurrences(of: ",", with: "")
+        }
+
+        if commaCount > 0 {
+            let parts = text.split(separator: ",", omittingEmptySubsequences: false)
+            if parts.count > 1,
+               parts.dropFirst().allSatisfy({ $0.count == 3 }),
+               parts.last?.contains(where: { $0 == "e" || $0 == "E" }) != true {
+                return parts.joined()
+            }
+            return text.replacingOccurrences(of: ",", with: ".")
+        }
+
+        if dotCount > 1 {
+            let parts = text.split(separator: ".", omittingEmptySubsequences: false)
+            if parts.count > 1, parts.dropFirst().allSatisfy({ $0.count == 3 }) {
+                return parts.joined()
+            }
+        }
+        return text
     }
 
     private static func isDateLike(_ text: String) -> Bool {
@@ -1321,11 +1384,15 @@ enum AnalysisSQLRuntime {
     }
 
     private static func quoteIdentifier(_ identifier: String) -> String {
-        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        "\"" + identifier
+            .replacingOccurrences(of: "\u{0}", with: "")
+            .replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 
     private static func sqlLiteral(_ text: String) -> String {
-        text.replacingOccurrences(of: "'", with: "''")
+        text
+            .replacingOccurrences(of: "\u{0}", with: "")
+            .replacingOccurrences(of: "'", with: "''")
     }
 
     static func sqlLikePattern(_ text: String) -> String {
@@ -1334,5 +1401,6 @@ enum AnalysisSQLRuntime {
             .replacingOccurrences(of: "'", with: "''")
             .replacingOccurrences(of: "%", with: "\\%")
             .replacingOccurrences(of: "_", with: "\\_")
+            .replacingOccurrences(of: "[", with: "\\[")
     }
 }

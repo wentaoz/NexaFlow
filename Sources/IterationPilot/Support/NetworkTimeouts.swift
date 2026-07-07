@@ -1,7 +1,8 @@
 import Foundation
 
 enum NetworkTimeouts {
-    static let longRequest: TimeInterval = 600
+    static let longRequest: TimeInterval = 180
+    static let aiRequest: TimeInterval = 180
     static let analysisIntentRequest: TimeInterval = 60
     static let externalReferenceRequest: TimeInterval = 30
     static let referenceIntelligenceRequest: TimeInterval = 45
