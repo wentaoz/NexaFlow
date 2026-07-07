@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="NexaFlow"
-APP_VERSION="${NEXAFLOW_RELEASE_VERSION:-1.0.2}"
+APP_VERSION="${NEXAFLOW_RELEASE_VERSION:-1.0.3}"
 APP_BUNDLE="dist/$APP_NAME.app"
 RELEASE_ROOT="artifacts/release"
 DATE_DIR="$RELEASE_ROOT/$(date +%F)"
