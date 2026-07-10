@@ -29,7 +29,7 @@
  *
  */
 #if defined(__APPLE__)
-#include <_xlocale.h>
+#include <xlocale.h>
 #elif defined(HAVE_XLOCALE_H)
 #include <xlocale.h>
 #endif
