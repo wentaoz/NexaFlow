@@ -28,7 +28,9 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifdef HAVE_XLOCALE_H
+#if defined(__APPLE__)
+#include <_xlocale.h>
+#elif defined(HAVE_XLOCALE_H)
 #include <xlocale.h>
 #endif
 #include <locale.h>
