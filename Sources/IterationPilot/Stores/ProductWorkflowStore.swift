@@ -11,22 +11,51 @@ enum WorkspaceSavePolicy {
 enum WorkspaceLoadResult {
     case loaded(ProductWorkspace)
     case missing
+    case unsupportedVersion(found: Int, supported: Int)
+    case credentialUnavailable(String)
     case corrupt(errorDescription: String, backupURL: URL?)
 }
 
 private actor WorkspaceDiskWriter {
-    private var latestSavedGeneration = 0
+    private var latestCompletedGeneration = 0
+    private var latestSuccessfulGeneration = 0
     private var pendingWorkspace: ProductWorkspace?
     private var pendingGeneration = 0
     private var pendingFailureHandler: (@Sendable (String) -> Void)?
     private var isDraining = false
+    private var flushWaiters: [Int: [CheckedContinuation<Bool, Never>]] = [:]
 
     func save(
         _ workspace: ProductWorkspace,
         generation: Int,
         onFailure: (@Sendable (String) -> Void)? = nil
     ) {
-        guard generation > latestSavedGeneration else { return }
+        enqueue(workspace, generation: generation, onFailure: onFailure)
+        startDrainingIfNeeded()
+    }
+
+    func flush(
+        _ workspace: ProductWorkspace,
+        generation: Int,
+        onFailure: (@Sendable (String) -> Void)? = nil
+    ) async -> Bool {
+        if generation <= latestCompletedGeneration {
+            return generation <= latestSuccessfulGeneration
+        }
+
+        return await withCheckedContinuation { continuation in
+            flushWaiters[generation, default: []].append(continuation)
+            enqueue(workspace, generation: generation, onFailure: onFailure)
+            startDrainingIfNeeded()
+        }
+    }
+
+    private func enqueue(
+        _ workspace: ProductWorkspace,
+        generation: Int,
+        onFailure: (@Sendable (String) -> Void)?
+    ) {
+        guard generation > latestCompletedGeneration else { return }
         if pendingWorkspace != nil, generation < pendingGeneration {
             return
         }
@@ -34,7 +63,9 @@ private actor WorkspaceDiskWriter {
         pendingWorkspace = workspace
         pendingGeneration = generation
         pendingFailureHandler = onFailure
+    }
 
+    private func startDrainingIfNeeded() {
         guard !isDraining else { return }
         isDraining = true
         Task {
@@ -54,15 +85,33 @@ private actor WorkspaceDiskWriter {
             let failureHandler = pendingFailureHandler
             pendingFailureHandler = nil
 
-            guard generation > latestSavedGeneration else { continue }
+            guard generation > latestCompletedGeneration else {
+                resolveFlushWaiters()
+                continue
+            }
             do {
                 try await Task.detached(priority: .utility) {
                     try ProductWorkflowStore.saveWorkspace(workspace)
                 }.value
-                latestSavedGeneration = max(latestSavedGeneration, generation)
+                latestSuccessfulGeneration = max(latestSuccessfulGeneration, generation)
+                latestCompletedGeneration = max(latestCompletedGeneration, generation)
+                resolveFlushWaiters()
             } catch {
+                latestCompletedGeneration = max(latestCompletedGeneration, generation)
                 failureHandler?("workspace 保存失败：\(error.localizedDescription)")
+                if pendingWorkspace == nil {
+                    resolveFlushWaiters()
+                }
             }
+        }
+    }
+
+    private func resolveFlushWaiters() {
+        let completedGenerations = flushWaiters.keys.filter { $0 <= latestCompletedGeneration }
+        for generation in completedGenerations {
+            let didSave = generation <= latestSuccessfulGeneration
+            let waiters = flushWaiters.removeValue(forKey: generation) ?? []
+            waiters.forEach { $0.resume(returning: didSave) }
         }
     }
 }
@@ -124,7 +173,7 @@ public final class ProductWorkflowStore: ObservableObject {
     var localKnowledgeFolderSyncTask: Task<Void, Never>?
     var currentReferenceCollectionRunID: UUID?
     var cancelledReferenceCollectionRunIDs = Set<UUID>()
-    nonisolated private static let workspaceDiskWriter = WorkspaceDiskWriter()
+    private let workspaceDiskWriter = WorkspaceDiskWriter()
     nonisolated private static let workspacePathEnvironmentKey = "NEXAFLOW_WORKSPACE_PATH"
     nonisolated private static let aiEndpointEnvironmentKey = "NEXAFLOW_AI_ENDPOINT"
     nonisolated private static let aiModelEnvironmentKey = "NEXAFLOW_AI_MODEL"
@@ -289,6 +338,24 @@ public final class ProductWorkflowStore: ObservableObject {
             Self.applyEnvironmentOverrides(to: &initialWorkspace)
             workspace = initialWorkspace
             performCriticalStartupRecovery()
+        case .unsupportedVersion(let found, let supported):
+            var safeWorkspace = SampleDataFactory.makeWorkspace()
+            Self.applyEnvironmentOverrides(to: &safeWorkspace)
+            workspace = safeWorkspace
+            let message = "workspace 来自更高版本（版本 \(found)，当前支持到 \(supported)）。为避免覆盖数据，已进入只读安全模式。"
+            workspaceReadOnlySafeModeMessage = message
+            workspaceSaveFailureMessage = message
+            statusText = message
+            shouldStartRuntimeServices = false
+        case .credentialUnavailable(let detail):
+            var safeWorkspace = SampleDataFactory.makeWorkspace()
+            Self.applyEnvironmentOverrides(to: &safeWorkspace)
+            workspace = safeWorkspace
+            let message = "钥匙串凭据暂时无法读取。为避免覆盖现有配置，已进入只读安全模式。原因：\(detail)"
+            workspaceReadOnlySafeModeMessage = message
+            workspaceSaveFailureMessage = message
+            statusText = message
+            shouldStartRuntimeServices = false
         case .corrupt(let errorDescription, let backupURL):
             var safeWorkspace = SampleDataFactory.makeWorkspace()
             Self.applyEnvironmentOverrides(to: &safeWorkspace)
@@ -377,6 +444,12 @@ public final class ProductWorkflowStore: ObservableObject {
         let referenceItemLimit = 2_000
         let dingtalkDocumentItemLimit = 2_000
         let jiraEvidenceLimit = 3_000
+        let knowledgeEntryLimit = 10_000
+        let correctionMessageLimitPerPack = 1_000
+        let correctionMemoryLimit = 5_000
+        let fieldDictionaryMemoryLimit = 20_000
+        let reportKnowledgeMemoryLimit = 5_000
+        let analysisTemplateMemoryLimit = 1_000
 
         for index in workspace.persistentAIJobs.indices {
             if workspace.persistentAIJobs[index].logs.count > aiLogLimit {
@@ -399,6 +472,14 @@ public final class ProductWorkflowStore: ObservableObject {
         }
 
         for packIndex in workspace.dataPacks.indices {
+            if workspace.dataPacks[packIndex].correctionMessages.count > correctionMessageLimitPerPack {
+                workspace.dataPacks[packIndex].correctionMessages = Array(
+                    workspace.dataPacks[packIndex].correctionMessages
+                        .sorted { $0.createdAt < $1.createdAt }
+                        .suffix(correctionMessageLimitPerPack)
+                )
+                didChange = true
+            }
             if workspace.dataPacks[packIndex].aiJobRecords.count > aiRecordLimit {
                 workspace.dataPacks[packIndex].aiJobRecords = Array(workspace.dataPacks[packIndex].aiJobRecords.sorted { $0.updatedAt > $1.updatedAt }.prefix(aiRecordLimit))
                 didChange = true
@@ -433,6 +514,38 @@ public final class ProductWorkflowStore: ObservableObject {
 
         if workspace.referenceItems.count > referenceItemLimit {
             workspace.referenceItems = Array(workspace.referenceItems.sorted { $0.collectedAt > $1.collectedAt }.prefix(referenceItemLimit))
+            didChange = true
+        }
+        if workspace.knowledgeEntries.count > knowledgeEntryLimit {
+            workspace.knowledgeEntries = Array(
+                workspace.knowledgeEntries
+                    .sorted { ($0.sourceUpdatedAt ?? $0.createdAt) > ($1.sourceUpdatedAt ?? $1.createdAt) }
+                    .prefix(knowledgeEntryLimit)
+            )
+            didChange = true
+        }
+        if workspace.correctionMemories.count > correctionMemoryLimit {
+            workspace.correctionMemories = Array(
+                workspace.correctionMemories.sorted { $0.updatedAt > $1.updatedAt }.prefix(correctionMemoryLimit)
+            )
+            didChange = true
+        }
+        if workspace.fieldDictionaryMemories.count > fieldDictionaryMemoryLimit {
+            workspace.fieldDictionaryMemories = Array(
+                workspace.fieldDictionaryMemories.sorted { $0.updatedAt > $1.updatedAt }.prefix(fieldDictionaryMemoryLimit)
+            )
+            didChange = true
+        }
+        if workspace.reportKnowledgeMemories.count > reportKnowledgeMemoryLimit {
+            workspace.reportKnowledgeMemories = Array(
+                workspace.reportKnowledgeMemories.sorted { $0.updatedAt > $1.updatedAt }.prefix(reportKnowledgeMemoryLimit)
+            )
+            didChange = true
+        }
+        if workspace.analysisTemplateMemories.count > analysisTemplateMemoryLimit {
+            workspace.analysisTemplateMemories = Array(
+                workspace.analysisTemplateMemories.sorted { $0.updatedAt > $1.updatedAt }.prefix(analysisTemplateMemoryLimit)
+            )
             didChange = true
         }
         if workspace.dingtalkDocumentItems.count > dingtalkDocumentItemLimit {
@@ -3503,48 +3616,75 @@ public final class ProductWorkflowStore: ObservableObject {
         let trendLooksTruncated = report.shape == .pivotWide && report.firstColumnValues.count > report.trendSummary.metricTrends.count
         guard rowDataLooksTruncated || trendLooksTruncated else { return report }
 
-        for url in candidateCSVURLs(fileName: report.fileName, pack: pack) {
-            guard FileManager.default.fileExists(atPath: url.path),
-                  let table = try? CSVParser.parse(fileURL: url),
-                  table.headers.first?.normalizedKey == report.headers.first?.normalizedKey else {
-                continue
-            }
-
-            var recovered = report
-            recovered.rowCount = table.rows.count
-            recovered.headers = table.headers
-            recovered.firstColumnValues = table.firstColumnValues
-            recovered.fieldExamples = table.fieldExamples
-            recovered.sampleRows = DataImportService.storedRows(for: table)
-            recovered.storedDataRows = TableContextPackageBuilder.storedRows(for: table)
-            recovered.rawRows = table.rawRows
-            recovered.shape = table.shape
-            recovered.parseWarnings = table.parseWarnings
-            recovered.cellTypeHints = table.cellTypeHints
-            recovered.originalEncoding = table.originalEncoding
-            recovered.delimiter = table.delimiter
-            let detection = DataImportService.recognizedKind(for: recovered)
-            if recovered.kind == .generic || recovered.detectedConfidence <= detection.confidence {
-                recovered.kind = detection.kind
-                recovered.detectedConfidence = detection.confidence
-            }
-            recovered.timeAxisProfile = ReportTimeAxisDetector.detect(table: table)
-            recovered.trendSummary = ReportTrendAnalyzer.analyze(
-                fileName: recovered.fileName,
-                kind: recovered.kind,
-                table: table,
-                timeAxisProfile: recovered.timeAxisProfile
+        var sourceAccessURL: URL?
+        if let sourcePath = pack.sourcePath?.nilIfBlank {
+            let fallbackURL = URL(fileURLWithPath: sourcePath)
+            let resolution = SecurityScopedResource.resolve(
+                bookmarkData: pack.sourceBookmarkData,
+                fallbackURL: fallbackURL
             )
-            recovered.tableContextCoverage = TableContextPackageBuilder.build(for: recovered).coverage
+            sourceAccessURL = resolution.url
+            if let refreshedBookmarkData = resolution.refreshedBookmarkData,
+               let packIndex = workspace.dataPacks.firstIndex(where: { $0.id == pack.id }) {
+                workspace.dataPacks[packIndex].sourceBookmarkData = refreshedBookmarkData
+                save(policy: .deferred)
+            }
+        }
+
+        let urls = candidateCSVURLs(fileName: report.fileName, pack: pack, resolvedSourceURL: sourceAccessURL)
+        let recover: () -> ImportedReport? = {
+            for url in urls {
+                guard FileManager.default.fileExists(atPath: url.path),
+                      let table = try? CSVParser.parse(fileURL: url),
+                      table.headers.first?.normalizedKey == report.headers.first?.normalizedKey else {
+                    continue
+                }
+
+                var recovered = report
+                recovered.rowCount = table.rows.count
+                recovered.headers = table.headers
+                recovered.firstColumnValues = table.firstColumnValues
+                recovered.fieldExamples = table.fieldExamples
+                recovered.sampleRows = DataImportService.storedRows(for: table)
+                recovered.storedDataRows = TableContextPackageBuilder.storedRows(for: table)
+                recovered.rawRows = table.rawRows
+                recovered.shape = table.shape
+                recovered.parseWarnings = table.parseWarnings
+                recovered.cellTypeHints = table.cellTypeHints
+                recovered.originalEncoding = table.originalEncoding
+                recovered.delimiter = table.delimiter
+                let detection = DataImportService.recognizedKind(for: recovered)
+                if recovered.kind == .generic || recovered.detectedConfidence <= detection.confidence {
+                    recovered.kind = detection.kind
+                    recovered.detectedConfidence = detection.confidence
+                }
+                recovered.timeAxisProfile = ReportTimeAxisDetector.detect(table: table)
+                recovered.trendSummary = ReportTrendAnalyzer.analyze(
+                    fileName: recovered.fileName,
+                    kind: recovered.kind,
+                    table: table,
+                    timeAxisProfile: recovered.timeAxisProfile
+                )
+                recovered.tableContextCoverage = TableContextPackageBuilder.build(for: recovered).coverage
+                return recovered
+            }
+            return nil
+        }
+
+        if let sourceAccessURL,
+           let recovered = SecurityScopedResource.access(sourceAccessURL, recover) {
+            return recovered
+        }
+        if sourceAccessURL == nil, let recovered = recover() {
             return recovered
         }
         return report
     }
 
-    func candidateCSVURLs(fileName: String, pack: DataPack) -> [URL] {
+    func candidateCSVURLs(fileName: String, pack: DataPack, resolvedSourceURL: URL? = nil) -> [URL] {
         var urls: [URL] = []
         if let sourcePath = pack.sourcePath?.nilIfBlank {
-            let sourceURL = URL(fileURLWithPath: sourcePath)
+            let sourceURL = resolvedSourceURL ?? URL(fileURLWithPath: sourcePath)
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory), isDirectory.boolValue {
                 urls.append(sourceURL.appendingPathComponent(fileName))
@@ -3817,14 +3957,29 @@ public final class ProductWorkflowStore: ObservableObject {
             deferredWorkspaceSaveTask?.cancel()
             deferredWorkspaceSaveTask = nil
             let failureHandler = workspaceSaveFailureHandler()
+            let diskWriter = workspaceDiskWriter
             Task.detached(priority: .userInitiated) {
-                await Self.workspaceDiskWriter.save(snapshot, generation: generation, onFailure: failureHandler)
+                await diskWriter.save(snapshot, generation: generation, onFailure: failureHandler)
             }
         case .deferred:
             scheduleDeferredWorkspaceSave()
         case .none:
             return
         }
+    }
+
+    @discardableResult
+    public func flushWorkspaceToDisk() async -> Bool {
+        if workspaceReadOnlySafeModeMessage != nil {
+            return true
+        }
+        deferredWorkspaceSaveTask?.cancel()
+        deferredWorkspaceSaveTask = nil
+        workspaceSaveGeneration += 1
+        let generation = workspaceSaveGeneration
+        let snapshot = workspace
+        let failureHandler = workspaceSaveFailureHandler()
+        return await workspaceDiskWriter.flush(snapshot, generation: generation, onFailure: failureHandler)
     }
 
     private func scheduleDeferredWorkspaceSave() {
@@ -3844,9 +3999,10 @@ public final class ProductWorkflowStore: ObservableObject {
             guard self.workspaceSaveGeneration == generation else { return }
             self.deferredWorkspaceSaveTask = nil
             let snapshot = self.workspace
+            let diskWriter = self.workspaceDiskWriter
             guard !Task.isCancelled else { return }
             await Task.detached(priority: .utility) {
-                await Self.workspaceDiskWriter.save(snapshot, generation: generation, onFailure: failureHandler)
+                await diskWriter.save(snapshot, generation: generation, onFailure: failureHandler)
             }.value
         }
     }
@@ -3905,12 +4061,35 @@ public final class ProductWorkflowStore: ObservableObject {
 
         do {
             let data = try Data(contentsOf: url)
+            if let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let schemaVersion = object["schemaVersion"] as? Int,
+               schemaVersion > ProductWorkspace.currentSchemaVersion {
+                return .unsupportedVersion(found: schemaVersion, supported: ProductWorkspace.currentSchemaVersion)
+            }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            return .loaded(try decoder.decode(ProductWorkspace.self, from: data))
+            var workspace = try decoder.decode(ProductWorkspace.self, from: data)
+            try migrateWorkspaceToCurrentSchema(&workspace)
+            return .loaded(workspace)
+        } catch let error as AppSecureStorage.PersistenceError {
+            return .credentialUnavailable(error.localizedDescription)
         } catch {
             let backupURL = backupCorruptWorkspace(at: url)
             return .corrupt(errorDescription: error.localizedDescription, backupURL: backupURL)
+        }
+    }
+
+    nonisolated static func migrateWorkspaceToCurrentSchema(_ workspace: inout ProductWorkspace) throws {
+        guard workspace.schemaVersion <= ProductWorkspace.currentSchemaVersion else {
+            throw CocoaError(.coderReadCorrupt)
+        }
+        while workspace.schemaVersion < ProductWorkspace.currentSchemaVersion {
+            switch workspace.schemaVersion {
+            case 1:
+                workspace.schemaVersion = 2
+            default:
+                throw CocoaError(.coderReadCorrupt)
+            }
         }
     }
 

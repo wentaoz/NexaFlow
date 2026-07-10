@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: NSWindowController?
     private var leftTitlebarAccessory: NSTitlebarAccessoryViewController?
     private var textEditingShortcutMonitor: Any?
+    private var isWaitingForWorkspaceFlush = false
 
     static func main() {
         if AppInternalLiveSmokeRunner.isRequested {
@@ -70,6 +71,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !isWaitingForWorkspaceFlush else { return .terminateLater }
+        isWaitingForWorkspaceFlush = true
+        Task { @MainActor [weak self] in
+            guard let self else {
+                sender.reply(toApplicationShouldTerminate: false)
+                return
+            }
+            let didSave = await store.flushWorkspaceToDisk()
+            isWaitingForWorkspaceFlush = false
+            sender.reply(toApplicationShouldTerminate: didSave)
+        }
+        return .terminateLater
     }
 
     private static func disableAppKitStateRestoration() {

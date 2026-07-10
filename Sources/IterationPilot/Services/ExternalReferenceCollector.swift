@@ -32,9 +32,16 @@ struct ExternalReferenceCollector {
         var sourceLog: ExternalReferenceSourceRunLog
     }
 
+    private enum CollectionEvent {
+        case source(SourceCollectionResult)
+        case deadline
+        case cancelled
+    }
+
     struct CollectionResult {
         var items: [ExternalReferenceItem]
         var sourceLogs: [ExternalReferenceSourceRunLog]
+        var timedOut: Bool
     }
 
     private static let maxConcurrentSources = 4
@@ -61,23 +68,41 @@ struct ExternalReferenceCollector {
         deadline: Date? = nil
     ) async throws -> CollectionResult {
         let effectiveDeadline = deadline ?? Date().addingTimeInterval(NetworkTimeouts.referenceCollectionRunBudget)
-        return await withTaskGroup(of: SourceCollectionResult.self, returning: CollectionResult.self) { group in
+        guard !sources.isEmpty else {
+            return CollectionResult(items: [], sourceLogs: [], timedOut: false)
+        }
+        return await withTaskGroup(of: CollectionEvent.self, returning: CollectionResult.self) { group in
             var nextIndex = 0
+            var activeSourceCount = 0
             var items: [ExternalReferenceItem] = []
             var sourceLogs: [ExternalReferenceSourceRunLog] = []
+            var timedOut = false
 
             func enqueueNextSource() {
                 guard nextIndex < sources.count else { return }
                 if Date() >= effectiveDeadline { return }
                 let source = sources[nextIndex]
                 nextIndex += 1
+                activeSourceCount += 1
                 group.addTask {
-                    await collectOneSource(
-                        source,
-                        searchSettings: searchSettings,
-                        evidenceWindow: evidenceWindow,
-                        collectionRunID: collectionRunID
+                    .source(
+                        await collectOneSource(
+                            source,
+                            searchSettings: searchSettings,
+                            evidenceWindow: evidenceWindow,
+                            collectionRunID: collectionRunID
+                        )
                     )
+                }
+            }
+
+            group.addTask {
+                let remaining = max(0, effectiveDeadline.timeIntervalSinceNow)
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+                    return .deadline
+                } catch {
+                    return .cancelled
                 }
             }
 
@@ -85,19 +110,35 @@ struct ExternalReferenceCollector {
                 enqueueNextSource()
             }
 
-            while let result = await group.next() {
-                items.append(contentsOf: result.items)
-                sourceLogs.append(result.sourceLog)
-                if Date() >= effectiveDeadline {
+            collectionLoop: while let event = await group.next() {
+                switch event {
+                case .source(let result):
+                    activeSourceCount -= 1
+                    items.append(contentsOf: result.items)
+                    sourceLogs.append(result.sourceLog)
+                    if Date() >= effectiveDeadline {
+                        timedOut = true
+                        group.cancelAll()
+                        break collectionLoop
+                    }
+                    enqueueNextSource()
+                    if activeSourceCount == 0, nextIndex >= sources.count {
+                        group.cancelAll()
+                        break collectionLoop
+                    }
+                case .deadline:
+                    timedOut = true
                     group.cancelAll()
-                    continue
+                    break collectionLoop
+                case .cancelled:
+                    break collectionLoop
                 }
-                enqueueNextSource()
             }
 
             return CollectionResult(
                 items: items.sorted { $0.displayDate > $1.displayDate },
-                sourceLogs: sourceLogs.sorted { $0.startedAt < $1.startedAt }
+                sourceLogs: sourceLogs.sorted { $0.startedAt < $1.startedAt },
+                timedOut: timedOut
             )
         }
     }

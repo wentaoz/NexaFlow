@@ -20,13 +20,47 @@ struct ParsedTable {
 typealias CSVTable = ParsedTable
 
 enum CSVParser {
+    private static let maximumParsedCellCount = 2_000_000
+    private static let maximumParsedRowCount = 500_000
+    private static let maximumParsedColumnCount = 20_000
+
+    private struct RowParseResult {
+        var rows: [[String]]
+        var exceededLimit: Bool
+    }
+
     static func parse(fileURL: URL) throws -> CSVTable {
         try ImportFileSizePolicy.validateSingleFile(fileURL)
-        let data = try Data(contentsOf: fileURL)
+        let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
         guard let decoded = decode(data) else {
             throw ImportError.unreadableFile(fileURL.lastPathComponent)
         }
-        return parse(decoded.content, originalEncoding: decoded.encodingName)
+        let delimiter = detectDelimiter(in: decoded.content)
+        let parsed = parseRows(
+            decoded.content,
+            delimiter: delimiter,
+            maximumCellCount: maximumParsedCellCount,
+            maximumRowCount: maximumParsedRowCount,
+            maximumColumnCount: maximumParsedColumnCount
+        )
+        guard !parsed.exceededLimit else {
+            throw ImportError.tableTooLarge(fileURL.lastPathComponent)
+        }
+        var warnings: [String] = []
+        if decoded.content.contains("\r") {
+            warnings.append("已兼容不同格式的 CSV 换行符。")
+        }
+        return table(
+            fromRawRows: parsed.rows,
+            sourceFormat: .csv,
+            sheetName: nil,
+            sheetIndex: nil,
+            parseWarnings: warnings,
+            originalEncoding: decoded.encodingName,
+            delimiter: String(delimiter),
+            workbookWarnings: [],
+            cellTypeHints: [:]
+        )
     }
 
     static func parse(_ content: String) -> CSVTable {
@@ -34,14 +68,13 @@ enum CSVParser {
     }
 
     private static func parse(_ content: String, originalEncoding: String) -> CSVTable {
-        let normalizedContent = normalizeContent(content)
-        let delimiter = detectDelimiter(in: normalizedContent)
+        let delimiter = detectDelimiter(in: content)
         var warnings: [String] = []
         if content.contains("\r") {
-            warnings.append("已标准化 CSV 换行符，兼容 \\r / \\r\\n / \\n。")
+            warnings.append("已兼容不同格式的 CSV 换行符。")
         }
 
-        let rawRows = parseRows(normalizedContent, delimiter: delimiter)
+        let rawRows = parseRows(content, delimiter: delimiter).rows
             .map(trimTrailingEmptyCells)
             .filter { row in
                 row.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -179,16 +212,8 @@ enum CSVParser {
         return String.Encoding(rawValue: raw)
     }
 
-    private static func normalizeContent(_ content: String) -> String {
-        content
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-            .replacingOccurrences(of: "\u{FEFF}", with: "")
-    }
-
     private static func detectDelimiter(in content: String) -> Character {
-        let sampleLines = normalizeContent(content)
-            .split(whereSeparator: \.isNewline)
+        let sampleLines = content.split(whereSeparator: \.isNewline)
             .prefix(20)
             .map(String.init)
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -220,14 +245,32 @@ enum CSVParser {
         return count
     }
 
-    private static func parseRows(_ content: String, delimiter: Character) -> [[String]] {
+    private static func parseRows(
+        _ content: String,
+        delimiter: Character,
+        maximumCellCount: Int? = nil,
+        maximumRowCount: Int? = nil,
+        maximumColumnCount: Int? = nil
+    ) -> RowParseResult {
         var rows: [[String]] = []
         var row: [String] = []
         var field = ""
         var inQuotes = false
         var iterator = content.makeIterator()
+        var parsedCellCount = 0
+        var exceededLimit = false
+
+        func limitsExceeded() -> Bool {
+            if let maximumCellCount, parsedCellCount > maximumCellCount { return true }
+            if let maximumRowCount, rows.count > maximumRowCount { return true }
+            if let maximumColumnCount, row.count > maximumColumnCount { return true }
+            return false
+        }
 
         while let character = iterator.next() {
+            if character == "\u{FEFF}", rows.isEmpty, row.isEmpty, field.isEmpty {
+                continue
+            }
             switch character {
             case "\"":
                 if inQuotes {
@@ -236,7 +279,7 @@ enum CSVParser {
                             field.append("\"")
                         } else {
                             inQuotes = false
-                            process(character: next, delimiter: delimiter, row: &row, rows: &rows, field: &field, inQuotes: &inQuotes)
+                            process(character: next, delimiter: delimiter, row: &row, rows: &rows, field: &field, inQuotes: &inQuotes, parsedCellCount: &parsedCellCount)
                         }
                     } else {
                         inQuotes = false
@@ -245,16 +288,24 @@ enum CSVParser {
                     inQuotes = true
                 }
             default:
-                process(character: character, delimiter: delimiter, row: &row, rows: &rows, field: &field, inQuotes: &inQuotes)
+                process(character: character, delimiter: delimiter, row: &row, rows: &rows, field: &field, inQuotes: &inQuotes, parsedCellCount: &parsedCellCount)
+            }
+            if limitsExceeded() {
+                exceededLimit = true
+                break
             }
         }
 
-        if !field.isEmpty || !row.isEmpty {
+        if !exceededLimit, !field.isEmpty || !row.isEmpty {
             row.append(field)
+            parsedCellCount += 1
             rows.append(row)
         }
 
-        return rows
+        if limitsExceeded() {
+            exceededLimit = true
+        }
+        return RowParseResult(rows: rows, exceededLimit: exceededLimit)
     }
 
     private static func process(
@@ -263,7 +314,8 @@ enum CSVParser {
         row: inout [String],
         rows: inout [[String]],
         field: inout String,
-        inQuotes: inout Bool
+        inQuotes: inout Bool,
+        parsedCellCount: inout Int
     ) {
         if inQuotes {
             field.append(character)
@@ -272,14 +324,14 @@ enum CSVParser {
 
         if character == delimiter {
             row.append(field)
+            parsedCellCount += 1
             field = ""
-        } else if character == "\n" {
+        } else if character == "\n" || character == "\r" {
             row.append(field)
+            parsedCellCount += 1
             rows.append(row)
             row = []
             field = ""
-        } else if character == "\r" {
-            return
         } else {
             field.append(character)
         }
@@ -470,6 +522,7 @@ enum ImportError: LocalizedError {
     case unsupportedFolder(String)
     case unsupportedFile(String)
     case fileTooLarge(String, maxMegabytes: Int)
+    case tableTooLarge(String)
 
     var errorDescription: String? {
         switch self {
@@ -481,6 +534,8 @@ enum ImportError: LocalizedError {
             return "暂不支持该文件格式：\(file)"
         case .fileTooLarge(let file, let maxMegabytes):
             return "\(file) 大小超过 \(maxMegabytes) MB。请先拆分、抽样或导出更小的表格后再导入。"
+        case .tableTooLarge(let file):
+            return "\(file) 的行列范围或单元格数量过大。请删除远端空白行列、拆分工作表或导出为较小文件后再导入。"
         }
     }
 }

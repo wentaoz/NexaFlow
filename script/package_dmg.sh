@@ -4,6 +4,8 @@ set -euo pipefail
 APP_NAME="NexaFlow"
 ALLOW_HYBRID="${ALLOW_HYBRID_DMG:-0}"
 STANDARD_ONLY=0
+REQUIRE_DISTRIBUTION_SIGNATURE="${NEXAFLOW_REQUIRE_DISTRIBUTION_SIGNATURE:-0}"
+NOTARY_PROFILE="${NEXAFLOW_NOTARY_PROFILE:-}"
 
 if [[ "${1:-}" == "--standard-only" ]]; then
   STANDARD_ONLY=1
@@ -31,6 +33,27 @@ fi
 if [[ ! -x "$APP_BUNDLE/Contents/MacOS/$APP_NAME" ]]; then
   echo "Missing executable: $APP_BUNDLE/Contents/MacOS/$APP_NAME" >&2
   exit 2
+fi
+
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+APP_ARCHS="$(lipo -archs "$APP_BINARY")"
+for required_arch in arm64 x86_64; do
+  if ! tr ' ' '\n' <<<"$APP_ARCHS" | grep -qx "$required_arch"; then
+    echo "App is not universal; missing $required_arch (found: $APP_ARCHS)." >&2
+    exit 2
+  fi
+done
+codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+
+if [[ "$REQUIRE_DISTRIBUTION_SIGNATURE" == "1" ]]; then
+  if ! codesign -dv --verbose=4 "$APP_BUNDLE" 2>&1 | grep -q "Authority=Developer ID Application:"; then
+    echo "Release packaging requires a Developer ID Application signed app." >&2
+    exit 2
+  fi
+  if [[ -z "$NOTARY_PROFILE" ]]; then
+    echo "Release packaging requires NEXAFLOW_NOTARY_PROFILE for notarization." >&2
+    exit 2
+  fi
 fi
 
 mkdir -p "$DATE_DIR"
@@ -87,10 +110,22 @@ EOF
 
 prepare_stage
 
+finalize_standard_dmg() {
+  local dmg_path="$1"
+  if [[ -n "$NOTARY_PROFILE" ]]; then
+    xcrun notarytool submit "$dmg_path" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$dmg_path"
+    xcrun stapler validate "$dmg_path"
+    spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg_path"
+  fi
+  hdiutil verify "$dmg_path"
+}
+
 echo "Packaging $APP_NAME DMG..."
 hdiutil_log="/private/tmp/$DMG_BASENAME-hdiutil.log"
 if hdiutil create -volname "$APP_NAME" -srcfolder "$stage_dir" -ov -format UDZO "$standard_tmp" >"$hdiutil_log" 2>&1; then
   mv "$standard_tmp" "$standard_dmg"
+  finalize_standard_dmg "$standard_dmg"
   echo "$standard_dmg"
   exit 0
 fi

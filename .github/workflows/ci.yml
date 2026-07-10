@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  push:
+    branches: [main, release/v1.1.0]
+  pull_request:
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: bash -n script/*.sh script/*.command
+      - name: Run tests and universal build checks
+        run: ./script/non_gui_regression.sh

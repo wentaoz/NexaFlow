@@ -3,6 +3,10 @@ import CoreXLSX
 import Foundation
 
 enum ExcelParser {
+    private static let maximumStoredCellCount = 2_000_000
+    private static let maximumMergedRangeCellCount = 100_000
+    private static let maximumLegacyDenseCellCount = 5_000_000
+
     static func parse(fileURL: URL) throws -> [CSVTable] {
         try ImportFileSizePolicy.validateSingleFile(fileURL)
         switch fileURL.pathExtension.lowercased() {
@@ -32,7 +36,12 @@ enum ExcelParser {
             for (index, item) in sheets.enumerated() {
                 let sheetName = item.name?.nilIfBlank ?? "Sheet\(index + 1)"
                 let worksheet = try file.parseWorksheet(at: item.path)
-                let converted = rawRows(from: worksheet, sharedStrings: sharedStrings, styles: styles)
+                let converted = try rawRows(
+                    from: worksheet,
+                    sharedStrings: sharedStrings,
+                    styles: styles,
+                    fileName: fileURL.lastPathComponent
+                )
                 guard !converted.rows.isEmpty else { continue }
                 let warnings = converted.warnings + [
                     converted.mergedRangeCount > 0 ? "已还原 \(converted.mergedRangeCount) 个 XLSX 合并单元格，用于表头和首列标签识别。" : nil
@@ -60,25 +69,35 @@ enum ExcelParser {
     private static func rawRows(
         from worksheet: Worksheet,
         sharedStrings: SharedStrings?,
-        styles: Styles?
-    ) -> (rows: [[String]], cellTypeHints: [String: String], warnings: [String], mergedRangeCount: Int) {
+        styles: Styles?,
+        fileName: String
+    ) throws -> (rows: [[String]], cellTypeHints: [String: String], warnings: [String], mergedRangeCount: Int) {
         var cellsByRow: [Int: [Int: String]] = [:]
         var hints: [String: String] = [:]
         var warnings: [String] = []
         var maxRow = 0
         var maxColumn = 0
+        var didReachCellLimit = false
+        var storedCellCount = 0
 
         for row in worksheet.data?.rows ?? [] {
             for cell in row.cells {
                 let rowIndex = Int(cell.reference.row)
                 let columnIndex = columnNumber(cell.reference.column.description)
-                maxRow = max(maxRow, rowIndex)
-                maxColumn = max(maxColumn, columnIndex)
                 let converted = stringValue(for: cell, sharedStrings: sharedStrings, styles: styles)
                 if !converted.value.isEmpty {
-                    cellsByRow[rowIndex, default: [:]][columnIndex] = converted.value
+                    if storedCellCount < maximumStoredCellCount {
+                        if cellsByRow[rowIndex]?[columnIndex] == nil {
+                            storedCellCount += 1
+                        }
+                        cellsByRow[rowIndex, default: [:]][columnIndex] = converted.value
+                        maxRow = max(maxRow, rowIndex)
+                        maxColumn = max(maxColumn, columnIndex)
+                    } else {
+                        didReachCellLimit = true
+                    }
                 }
-                if let hint = converted.typeHint {
+                if let hint = converted.typeHint, hints.count < maximumStoredCellCount {
                     hints[cell.reference.description] = hint
                 }
                 if cell.formula != nil, cell.value?.nilIfBlank == nil {
@@ -87,15 +106,37 @@ enum ExcelParser {
             }
         }
 
-        let mergedRangeCount = fillMergedCells(worksheet.mergeCells?.items ?? [], cellsByRow: &cellsByRow, maxRow: &maxRow, maxColumn: &maxColumn)
-        guard maxRow > 0, maxColumn > 0 else { return ([], hints, warnings.uniqued(), mergedRangeCount) }
+        let mergeResult = fillMergedCells(
+            worksheet.mergeCells?.items ?? [],
+            cellsByRow: &cellsByRow,
+            maxRow: &maxRow,
+            maxColumn: &maxColumn
+        )
+        if didReachCellLimit {
+            throw ImportError.tableTooLarge(fileName)
+        }
+        if mergeResult.skippedCount > 0 {
+            warnings.append("已跳过 \(mergeResult.skippedCount) 个范围过大的合并单元格，避免占用过多内存。")
+        }
+        guard maxRow > 0, maxColumn > 0 else {
+            return ([], hints, warnings.uniqued(), mergeResult.filledCount)
+        }
 
-        let rows = (1...maxRow).map { rowIndex in
-            (1...maxColumn).map { columnIndex in
+        let denseCellCount = maxRow.multipliedReportingOverflow(by: maxColumn)
+        let shouldCompact = denseCellCount.overflow || denseCellCount.partialValue > maximumStoredCellCount
+        let rowIndices = shouldCompact ? cellsByRow.keys.sorted() : Array(1...maxRow)
+        let columnIndices = shouldCompact
+            ? Set(cellsByRow.values.flatMap(\.keys)).sorted()
+            : Array(1...maxColumn)
+        if shouldCompact {
+            warnings.append("检测到稀疏的远端单元格坐标，已压缩空白行列后导入。")
+        }
+        let rows = rowIndices.map { rowIndex in
+            columnIndices.map { columnIndex in
                 cellsByRow[rowIndex]?[columnIndex] ?? ""
             }
         }
-        return (rows, hints, warnings.uniqued(), mergedRangeCount)
+        return (rows, hints, warnings.uniqued(), mergeResult.filledCount)
     }
 
     private static func stringValue(
@@ -143,23 +184,35 @@ enum ExcelParser {
         cellsByRow: inout [Int: [Int: String]],
         maxRow: inout Int,
         maxColumn: inout Int
-    ) -> Int {
-        var count = 0
+    ) -> (filledCount: Int, skippedCount: Int) {
+        var filledCount = 0
+        var skippedCount = 0
+        var storedCellCount = cellsByRow.values.reduce(0) { $0 + $1.count }
         for merge in mergedCells {
             guard let range = cellRange(merge.reference),
                   let anchor = cellsByRow[range.startRow]?[range.startColumn]?.nilIfBlank else {
                 continue
             }
-            count += 1
+            let rowCount = range.endRow - range.startRow + 1
+            let columnCount = range.endColumn - range.startColumn + 1
+            let area = rowCount.multipliedReportingOverflow(by: columnCount)
+            guard !area.overflow,
+                  area.partialValue <= maximumMergedRangeCellCount,
+                  storedCellCount + area.partialValue <= maximumStoredCellCount else {
+                skippedCount += 1
+                continue
+            }
+            filledCount += 1
             maxRow = max(maxRow, range.endRow)
             maxColumn = max(maxColumn, range.endColumn)
             for row in range.startRow...range.endRow {
                 for column in range.startColumn...range.endColumn where cellsByRow[row]?[column]?.nilIfBlank == nil {
                     cellsByRow[row, default: [:]][column] = anchor
+                    storedCellCount += 1
                 }
             }
         }
-        return count
+        return (filledCount, skippedCount)
     }
 
     private static func parseXLS(fileURL: URL) throws -> [CSVTable] {
@@ -194,7 +247,7 @@ enum ExcelParser {
             defer { xls_close_WS(worksheet) }
             let parseError = xls_parseWorkSheet(worksheet)
             guard parseError == LIBXLS_OK else { continue }
-            let converted = rawRows(from: worksheet)
+            let converted = try rawRows(from: worksheet, fileName: fileURL.lastPathComponent)
             guard !converted.rows.isEmpty else { continue }
             var warnings = converted.warnings
             if skippedHidden > 0 {
@@ -219,10 +272,19 @@ enum ExcelParser {
         return result
     }
 
-    private static func rawRows(from worksheet: UnsafeMutablePointer<xlsWorkSheet>) -> (rows: [[String]], cellTypeHints: [String: String], warnings: [String]) {
+    private static func rawRows(
+        from worksheet: UnsafeMutablePointer<xlsWorkSheet>,
+        fileName: String
+    ) throws -> (rows: [[String]], cellTypeHints: [String: String], warnings: [String]) {
         let maxRow = Int(worksheet.pointee.rows.lastrow)
         let maxColumn = Int(worksheet.pointee.rows.lastcol)
         guard maxRow >= 0, maxColumn >= 0 else { return ([], [:], []) }
+        let rowCount = maxRow + 1
+        let columnCount = maxColumn + 1
+        let denseCellCount = rowCount.multipliedReportingOverflow(by: columnCount)
+        guard !denseCellCount.overflow, denseCellCount.partialValue <= maximumLegacyDenseCellCount else {
+            throw ImportError.tableTooLarge(fileName)
+        }
         var rows = Array(repeating: Array(repeating: "", count: maxColumn + 1), count: maxRow + 1)
         var hints: [String: String] = [:]
         var warnings: [String] = []

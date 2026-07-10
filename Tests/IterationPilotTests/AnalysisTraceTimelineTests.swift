@@ -1,4 +1,5 @@
 import Foundation
+import XCTest
 @testable import IterationPilotCore
 
 final class AnalysisTraceTimelineTests: XCTestCase {

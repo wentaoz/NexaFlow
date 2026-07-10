@@ -1,4 +1,5 @@
 import Foundation
+import XCTest
 @testable import IterationPilotCore
 
 final class AnalysisHarnessTests: XCTestCase {
@@ -1186,13 +1187,9 @@ final class AnalysisHarnessTests: XCTestCase {
 
     func testRealLocalLifeXLSXImportAndLocalHarnessAlgorithms() throws {
         guard let path = ProcessInfo.processInfo.environment["NEXAFLOW_REAL_XLSX_SMOKE_PATH"]?.nilIfBlank else {
-            print("SKIP real XLSX smoke: missing NEXAFLOW_REAL_XLSX_SMOKE_PATH")
-            return
+            throw XCTSkip("Set NEXAFLOW_REAL_XLSX_SMOKE_PATH to run the real workbook smoke test.")
         }
-        guard FileManager.default.fileExists(atPath: path) else {
-            print("SKIP real XLSX smoke: file not found \(path)")
-            return
-        }
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: path), "Real XLSX smoke file does not exist: \(path)")
 
         let imported = try DataImportService.importReports(from: [URL(fileURLWithPath: path)])
         let reports = imported.reports.filter { !$0.headers.isEmpty && $0.rowCount > 0 }
@@ -1206,10 +1203,10 @@ final class AnalysisHarnessTests: XCTestCase {
         XCTAssert(!metricCatalog.isEmpty, "metrics=\(metricCatalog.prefix(80).joined(separator: ","))")
 
         let tradeMetrics = ["交易人数", "交易金额", "交易笔数"]
-        guard tradeMetrics.allSatisfy({ metricCatalog.contains($0) }) else {
-            print("SKIP real XLSX trade metric assertions: file imported successfully but does not contain \(tradeMetrics.joined(separator: ",")); metrics=\(metricCatalog.prefix(80).joined(separator: ","))")
-            return
-        }
+        try XCTSkipUnless(
+            tradeMetrics.allSatisfy { metricCatalog.contains($0) },
+            "Workbook imported but does not contain the trade metric fixture."
+        )
 
         let output = try XCTUnwrap(NormalizedFactMetricAnalyzer.analyze(
             userQuery: "帮我统计去年下半年和今年上半年的交易人数、交易金额、交易笔数。",
@@ -1229,6 +1226,7 @@ final class AnalysisHarnessTests: XCTestCase {
     }
 
     func testLiveAIStreamingServiceSmoke() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["NEXAFLOW_LIVE_AI_SMOKE"] == "1")
         let workspace = try XCTUnwrap(ProductWorkflowStore.loadWorkspace(), "未找到本机 workspace，无法读取 AI 设置。")
         let settings = workspace.aiSettings
         guard !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -1248,6 +1246,7 @@ final class AnalysisHarnessTests: XCTestCase {
     }
 
     func testLiveHarnessAnalysisSmoke() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["NEXAFLOW_LIVE_AI_SMOKE"] == "1")
         let workspace = try XCTUnwrap(ProductWorkflowStore.loadWorkspace(), "未找到本机 workspace，无法读取 AI 设置。")
         let settings = workspace.aiSettings
         guard !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

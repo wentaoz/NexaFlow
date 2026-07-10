@@ -44,7 +44,7 @@ struct SearchAPISettings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         tavilyEndpoint = try container.decodeIfPresent(String.self, forKey: .tavilyEndpoint) ?? Self.default.tavilyEndpoint
         let legacyAPIKey = try container.decodeIfPresent(String.self, forKey: .tavilyAPIKey) ?? ""
-        tavilyAPIKey = AppSecureStorage.secret(
+        tavilyAPIKey = try AppSecureStorage.secret(
             legacyPlaintext: legacyAPIKey,
             service: Self.tavilyAPIKeyService,
             account: Self.tavilyAPIKeyAccount
@@ -58,16 +58,13 @@ struct SearchAPISettings: Codable, Equatable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(tavilyEndpoint, forKey: .tavilyEndpoint)
         if !tavilyAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            AppSecureStorage.storePassword(
+            try AppSecureStorage.persistPassword(
                 tavilyAPIKey,
                 service: Self.tavilyAPIKeyService,
                 account: Self.tavilyAPIKeyAccount
             )
         } else {
-            AppSecureStorage.deletePassword(
-                service: Self.tavilyAPIKeyService,
-                account: Self.tavilyAPIKeyAccount
-            )
+            try AppSecureStorage.persistPassword("", service: Self.tavilyAPIKeyService, account: Self.tavilyAPIKeyAccount)
         }
         try container.encode("", forKey: .tavilyAPIKey)
         try container.encode(didImportRivalRadarSources, forKey: .didImportRivalRadarSources)
@@ -367,7 +364,7 @@ struct ExternalReferenceSource: Identifiable, Codable, Hashable {
             url: try container.decodeIfPresent(String.self, forKey: .url) ?? "",
             keywordsText: try container.decodeIfPresent(String.self, forKey: .keywordsText) ?? "",
             queryTemplate: try container.decodeIfPresent(String.self, forKey: .queryTemplate) ?? "",
-            apiKey: AppSecureStorage.secret(
+            apiKey: try AppSecureStorage.secret(
                 legacyPlaintext: legacyAPIKey,
                 service: Self.apiKeyService,
                 account: decodedID.uuidString
@@ -411,9 +408,9 @@ struct ExternalReferenceSource: Identifiable, Codable, Hashable {
         try container.encode(keywordsText, forKey: .keywordsText)
         try container.encode(queryTemplate, forKey: .queryTemplate)
         if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            AppSecureStorage.storePassword(apiKey, service: Self.apiKeyService, account: id.uuidString)
+            try AppSecureStorage.persistPassword(apiKey, service: Self.apiKeyService, account: id.uuidString)
         } else {
-            AppSecureStorage.deletePassword(service: Self.apiKeyService, account: id.uuidString)
+            try AppSecureStorage.persistPassword("", service: Self.apiKeyService, account: id.uuidString)
         }
         try container.encode("", forKey: .apiKey)
         try container.encode(searchTitlePath, forKey: .searchTitlePath)

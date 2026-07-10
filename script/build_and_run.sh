@@ -9,11 +9,12 @@ MIN_SYSTEM_VERSION="13.0"
 CONFIGURATION="${ITERATIONPILOT_CONFIGURATION:-release}"
 ARCHS="${ITERATIONPILOT_ARCHS:-arm64 x86_64}"
 CODESIGN_IDENTITY="${ITERATIONPILOT_CODESIGN_IDENTITY:-}"
+REQUIRE_DISTRIBUTION_SIGNATURE="${NEXAFLOW_REQUIRE_DISTRIBUTION_SIGNATURE:-0}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_APP_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")"
 APP_VERSION="${NEXAFLOW_RELEASE_VERSION:-$DEFAULT_APP_VERSION}"
-APP_BUILD="${NEXAFLOW_BUILD_NUMBER:-1}"
+APP_BUILD="${NEXAFLOW_BUILD_NUMBER:-$(git rev-list --count HEAD)}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -52,19 +53,15 @@ for ARCH in $ARCHS; do
   TRIPLE="${ARCH}-apple-macosx${MIN_SYSTEM_VERSION}"
   SCRATCH_PATH="$ROOT_DIR/.build/$ARCH"
   echo "Building $SWIFT_PRODUCT_NAME for $ARCH ($CONFIGURATION)"
-  if swift build --disable-sandbox -c "$CONFIGURATION" --triple "$TRIPLE" --scratch-path "$SCRATCH_PATH"; then
-    BIN_DIR="$(swift build --disable-sandbox -c "$CONFIGURATION" --triple "$TRIPLE" --scratch-path "$SCRATCH_PATH" --show-bin-path)"
-    BUILT_BINARIES+=("$BIN_DIR/$SWIFT_PRODUCT_NAME")
-  else
-    echo "warning: failed to build $ARCH; continuing with remaining architectures" >&2
+  swift build --disable-sandbox -c "$CONFIGURATION" --triple "$TRIPLE" --scratch-path "$SCRATCH_PATH"
+  BIN_DIR="$(swift build --disable-sandbox -c "$CONFIGURATION" --triple "$TRIPLE" --scratch-path "$SCRATCH_PATH" --show-bin-path)"
+  BUILT_BINARY="$BIN_DIR/$SWIFT_PRODUCT_NAME"
+  if [[ ! -x "$BUILT_BINARY" ]]; then
+    echo "Missing built executable for $ARCH: $BUILT_BINARY" >&2
+    exit 1
   fi
+  BUILT_BINARIES+=("$BUILT_BINARY")
 done
-
-if [[ "${#BUILT_BINARIES[@]}" -eq 0 ]]; then
-  echo "No cross-architecture build succeeded; falling back to native build" >&2
-  swift build --disable-sandbox -c "$CONFIGURATION"
-  BUILT_BINARIES+=("$(swift build --disable-sandbox -c "$CONFIGURATION" --show-bin-path)/$SWIFT_PRODUCT_NAME")
-fi
 
 if [[ "${#BUILT_BINARIES[@]}" -eq 1 ]]; then
   cp "${BUILT_BINARIES[0]}" "$APP_BINARY"
@@ -73,6 +70,13 @@ else
 fi
 
 chmod +x "$APP_BINARY"
+
+for ARCH in $ARCHS; do
+  if ! lipo -archs "$APP_BINARY" | tr ' ' '\n' | grep -qx "$ARCH"; then
+    echo "Built app is missing required architecture: $ARCH" >&2
+    exit 1
+  fi
+done
 
 if [[ -f "$APP_ICON" ]]; then
   cp "$APP_ICON" "$APP_RESOURCES/AppIcon.icns"
@@ -118,14 +122,26 @@ PLIST
 printf 'APPL????' > "$APP_CONTENTS/PkgInfo"
 xattr -cr "$APP_BUNDLE" >/dev/null 2>&1 || true
 if [[ -z "$CODESIGN_IDENTITY" ]]; then
-  CODESIGN_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '"' '/Apple Development|Developer ID Application/ { print $2; exit }')"
+  CODESIGN_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '"' '/Developer ID Application/ { print $2; exit }')"
+fi
+if [[ -z "$CODESIGN_IDENTITY" && "$REQUIRE_DISTRIBUTION_SIGNATURE" != "1" ]]; then
+  CODESIGN_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | awk -F '"' '/Apple Development/ { print $2; exit }')"
 fi
 
 if [[ -n "$CODESIGN_IDENTITY" ]]; then
-  codesign --force --deep --sign "$CODESIGN_IDENTITY" "$APP_BUNDLE" >/dev/null 2>&1 || codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
+  if [[ "$REQUIRE_DISTRIBUTION_SIGNATURE" == "1" && "$CODESIGN_IDENTITY" != Developer\ ID\ Application:* ]]; then
+    echo "Distribution build requires a Developer ID Application identity." >&2
+    exit 1
+  fi
+  codesign --force --deep --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$APP_BUNDLE"
 else
-  codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
+  if [[ "$REQUIRE_DISTRIBUTION_SIGNATURE" == "1" ]]; then
+    echo "No Developer ID Application signing identity is available." >&2
+    exit 1
+  fi
+  codesign --force --deep --sign - "$APP_BUNDLE"
 fi
+codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 
 open_app() {
   local open_env_args=()

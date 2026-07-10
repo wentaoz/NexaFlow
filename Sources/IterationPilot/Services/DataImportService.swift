@@ -29,6 +29,7 @@ enum DataImportService {
             period: period,
             importedAt: Date(),
             sourcePath: folderURL.path,
+            sourceBookmarkData: try? SecurityScopedResource.bookmarkData(for: folderURL),
             manifest: manifest,
             productUpdates: updates,
             metrics: metrics,

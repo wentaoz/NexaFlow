@@ -262,6 +262,18 @@ enum DebugSnapshotExporter {
         guard let representation = view.bitmapImageRepForCachingDisplay(in: bounds) else {
             throw SnapshotError.bitmapCreationFailed
         }
+        if let context = NSGraphicsContext(bitmapImageRep: representation) {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            NSColor(
+                calibratedRed: 251 / 255,
+                green: 248 / 255,
+                blue: 241 / 255,
+                alpha: 1
+            ).setFill()
+            bounds.fill()
+            NSGraphicsContext.restoreGraphicsState()
+        }
         view.cacheDisplay(in: bounds, to: representation)
         guard let data = representation.representation(using: .png, properties: [:]) else {
             throw SnapshotError.pngEncodingFailed

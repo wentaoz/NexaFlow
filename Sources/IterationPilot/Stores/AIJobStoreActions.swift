@@ -11,6 +11,14 @@ private enum PersistentAIJobStoragePolicy {
     static let logLimit = 160
 }
 
+enum PersistentAIJobRetryPolicy {
+    static let maximumDelayedRetryCount = 5
+
+    static func shouldScheduleRetry(isRetryable: Bool, delayedRetryCount: Int) -> Bool {
+        isRetryable && delayedRetryCount < maximumDelayedRetryCount
+    }
+}
+
 @MainActor
 extension ProductWorkflowStore {
     func recoverInterruptedPersistentAIJobs() {
@@ -1655,6 +1663,7 @@ extension ProductWorkflowStore {
         let retryable = AIJobQueue.isRetryable(error)
         let message = error.localizedDescription
         let failedJob = workspace.persistentAIJobs.first { $0.id == jobID }
+        var scheduledRetry = false
         updatePersistentAIJob(jobID) { job in
             if let queueRecord {
                 var updatedRecord = queueRecord
@@ -1666,10 +1675,14 @@ extension ProductWorkflowStore {
                 job.logs.append(contentsOf: updatedRecord.logs)
             }
             job.lastError = message
-            if retryable {
+            if PersistentAIJobRetryPolicy.shouldScheduleRetry(
+                isRetryable: retryable,
+                delayedRetryCount: job.delayedRetryCount
+            ) {
                 job.delayedRetryCount += 1
                 job.status = .waiting
                 job.nextRunAt = Date().addingTimeInterval(delayedRetryInterval(for: job.delayedRetryCount))
+                scheduledRetry = true
                 job.logs.append(AIReasoningLogEntry(
                     step: job.kind.label,
                     status: .waiting,
@@ -1681,17 +1694,19 @@ extension ProductWorkflowStore {
                 job.logs.append(AIReasoningLogEntry(
                     step: job.kind.label,
                     status: .needsUserAction,
-                    detail: message
+                    detail: retryable
+                        ? "\(message)。后台延迟重试已达到 \(PersistentAIJobRetryPolicy.maximumDelayedRetryCount) 次，请检查配置或手动重试。"
+                        : message
                 ))
             }
         }
-        if !retryable,
+        if !scheduledRetry,
            let sessionID = failedJob?.payload.sessionID,
            let failedKind = failedJob?.kind,
            failedKind == .analysisSession || failedKind == .memo || failedKind == .simpleReportGeneration {
             setAnalysisSessionStatus(sessionID, .waitingForUser)
         }
-        statusText = retryable ? "AI 任务失败，已进入后台重试队列：\(message)" : "AI 任务需要用户处理：\(message)"
+        statusText = scheduledRetry ? "AI 任务失败，已进入后台重试队列：\(message)" : "AI 任务需要用户处理：\(message)"
     }
 
     func delayedRetryInterval(for retryCount: Int) -> TimeInterval {
@@ -1767,6 +1782,7 @@ extension ProductWorkflowStore {
         if workspace.persistentAIJobs.contains(where: { $0.id == jobID }) {
             updatePersistentAIJob(jobID) { job in
                 job.status = .waiting
+                job.delayedRetryCount = 0
                 job.nextRunAt = Date()
                 job.lastError = ""
                 job.logs.append(AIReasoningLogEntry(step: job.kind.label, status: .waiting, detail: "用户手动重试，使用原始任务 payload 重新执行。"))

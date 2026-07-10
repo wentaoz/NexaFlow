@@ -203,6 +203,7 @@ struct DataPack: Identifiable, Codable {
     var period: String
     var importedAt: Date
     var sourcePath: String?
+    var sourceBookmarkData: Data?
     var manifest: DataManifest
     var productUpdates: [ProductUpdate]
     var metrics: [MetricPoint]
@@ -229,6 +230,7 @@ struct DataPack: Identifiable, Codable {
         period: String,
         importedAt: Date,
         sourcePath: String?,
+        sourceBookmarkData: Data? = nil,
         manifest: DataManifest,
         productUpdates: [ProductUpdate],
         metrics: [MetricPoint],
@@ -254,6 +256,7 @@ struct DataPack: Identifiable, Codable {
         self.period = period
         self.importedAt = importedAt
         self.sourcePath = sourcePath
+        self.sourceBookmarkData = sourceBookmarkData
         self.manifest = manifest
         self.productUpdates = productUpdates
         self.metrics = metrics
@@ -281,6 +284,7 @@ struct DataPack: Identifiable, Codable {
         case period
         case importedAt
         case sourcePath
+        case sourceBookmarkData
         case manifest
         case productUpdates
         case metrics
@@ -309,6 +313,7 @@ struct DataPack: Identifiable, Codable {
         period = try container.decodeIfPresent(String.self, forKey: .period) ?? ""
         importedAt = try container.decodeIfPresent(Date.self, forKey: .importedAt) ?? Date()
         sourcePath = try container.decodeIfPresent(String.self, forKey: .sourcePath)
+        sourceBookmarkData = try container.decodeIfPresent(Data.self, forKey: .sourceBookmarkData)
         manifest = try container.decodeIfPresent(DataManifest.self, forKey: .manifest) ?? .fallback(period: period, sourcePath: sourcePath)
         productUpdates = try container.decodeIfPresent([ProductUpdate].self, forKey: .productUpdates) ?? []
         metrics = try container.decodeIfPresent([MetricPoint].self, forKey: .metrics) ?? []
@@ -3521,7 +3526,7 @@ struct AISettings: Codable, Equatable {
         endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? Self.default.endpoint
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? Self.default.model
         let legacyAPIKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
-        apiKey = AppSecureStorage.secret(
+        apiKey = try AppSecureStorage.secret(
             legacyPlaintext: legacyAPIKey,
             service: Self.apiKeyService,
             account: Self.apiKeyAccount
@@ -3534,9 +3539,9 @@ struct AISettings: Codable, Equatable {
         try container.encode(endpoint, forKey: .endpoint)
         try container.encode(model, forKey: .model)
         if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            AppSecureStorage.storePassword(apiKey, service: Self.apiKeyService, account: Self.apiKeyAccount)
+            try AppSecureStorage.persistPassword(apiKey, service: Self.apiKeyService, account: Self.apiKeyAccount)
         } else {
-            AppSecureStorage.deletePassword(service: Self.apiKeyService, account: Self.apiKeyAccount)
+            try AppSecureStorage.persistPassword("", service: Self.apiKeyService, account: Self.apiKeyAccount)
         }
         try container.encode("", forKey: .apiKey)
         try container.encode(systemPrompt, forKey: .systemPrompt)
@@ -3778,7 +3783,7 @@ struct ConfluenceSettings: Codable, Equatable {
         keychainService = try container.decodeIfPresent(String.self, forKey: .keychainService) ?? Self.default.keychainService
         keychainAccount = try container.decodeIfPresent(String.self, forKey: .keychainAccount) ?? Self.default.keychainAccount
         let legacyToken = try container.decodeIfPresent(String.self, forKey: .bearerToken) ?? ""
-        bearerToken = AppSecureStorage.secret(
+        bearerToken = try AppSecureStorage.secret(
             legacyPlaintext: legacyToken,
             service: keychainService,
             account: keychainAccount
@@ -3794,9 +3799,9 @@ struct ConfluenceSettings: Codable, Equatable {
         try container.encode(keychainService, forKey: .keychainService)
         try container.encode(keychainAccount, forKey: .keychainAccount)
         if !bearerToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            AppSecureStorage.storePassword(bearerToken, service: keychainService, account: keychainAccount)
+            try AppSecureStorage.persistPassword(bearerToken, service: keychainService, account: keychainAccount)
         } else {
-            AppSecureStorage.deletePassword(service: keychainService, account: keychainAccount)
+            try AppSecureStorage.persistPassword("", service: keychainService, account: keychainAccount)
         }
         try container.encode("", forKey: .bearerToken)
         try container.encode(maxPages, forKey: .maxPages)

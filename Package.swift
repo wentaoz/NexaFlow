@@ -38,9 +38,6 @@ let package = Package(
             dependencies: iterationPilotDependencies,
             path: "Sources/IterationPilot",
             exclude: ["App"],
-            swiftSettings: [
-                .unsafeFlags(["-enable-testing"])
-            ],
             linkerSettings: iterationPilotLinkerSettings
         ),
         .executableTarget(
@@ -49,8 +46,8 @@ let package = Package(
             path: "Sources/IterationPilot/App",
             linkerSettings: iterationPilotLinkerSettings
         ),
-        .executableTarget(
-            name: "IterationPilotRegressionTests",
+        .testTarget(
+            name: "IterationPilotTests",
             dependencies: ["IterationPilotCore"],
             path: "Tests/IterationPilotTests",
             linkerSettings: iterationPilotLinkerSettings

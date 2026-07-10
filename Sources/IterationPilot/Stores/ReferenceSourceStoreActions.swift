@@ -432,7 +432,7 @@ extension ProductWorkflowStore {
                 log.status == .succeeded ? log.sourceID : nil
             })
             let mergeResult = mergeReferenceItems(sedimentedItems, fetchedSourceIDs: successfulSourceIDs)
-            let didTimeOut = Date() >= deadline || pipelineResult.timedOut
+            let didTimeOut = collectionResult.timedOut || Date() >= deadline || pipelineResult.timedOut
             finishReferenceCollectionRun(
                 runID,
                 sourceLogs: finalizedSourceLogs(collectionResult.sourceLogs, acceptedItems: pipelineResult.items, sedimentedItems: sedimentedItems),

@@ -203,7 +203,7 @@ struct TableauSource: Identifiable, Codable, Hashable {
             baseURL: try container.decodeIfPresent(String.self, forKey: .baseURL) ?? "",
             siteContentURL: try container.decodeIfPresent(String.self, forKey: .siteContentURL) ?? "",
             patName: try container.decodeIfPresent(String.self, forKey: .patName) ?? "",
-            patToken: AppSecureStorage.secret(
+            patToken: try AppSecureStorage.secret(
                 legacyPlaintext: legacyToken,
                 service: Self.patTokenService,
                 account: decodedID.uuidString
@@ -228,9 +228,9 @@ struct TableauSource: Identifiable, Codable, Hashable {
         try container.encode(siteContentURL, forKey: .siteContentURL)
         try container.encode(patName, forKey: .patName)
         if !patToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            AppSecureStorage.storePassword(patToken, service: Self.patTokenService, account: id.uuidString)
+            try AppSecureStorage.persistPassword(patToken, service: Self.patTokenService, account: id.uuidString)
         } else {
-            AppSecureStorage.deletePassword(service: Self.patTokenService, account: id.uuidString)
+            try AppSecureStorage.persistPassword("", service: Self.patTokenService, account: id.uuidString)
         }
         try container.encode("", forKey: .patToken)
         try container.encode(projectFilter, forKey: .projectFilter)

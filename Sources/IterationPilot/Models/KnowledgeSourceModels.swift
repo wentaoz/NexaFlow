@@ -83,6 +83,7 @@ struct LocalKnowledgeFolderSource: Identifiable, Codable, Hashable {
     var businessSpaceID: UUID
     var displayName: String
     var folderPath: String
+    var folderBookmarkData: Data?
     var isEnabled: Bool
     var syncSchedule: KnowledgeSyncSchedule
     var lastSyncAt: Date?
@@ -98,6 +99,7 @@ struct LocalKnowledgeFolderSource: Identifiable, Codable, Hashable {
         businessSpaceID: UUID,
         displayName: String,
         folderPath: String,
+        folderBookmarkData: Data? = nil,
         isEnabled: Bool = true,
         syncSchedule: KnowledgeSyncSchedule = .manual,
         lastSyncAt: Date? = nil,
@@ -112,6 +114,7 @@ struct LocalKnowledgeFolderSource: Identifiable, Codable, Hashable {
         self.businessSpaceID = businessSpaceID
         self.displayName = displayName
         self.folderPath = folderPath
+        self.folderBookmarkData = folderBookmarkData
         self.isEnabled = isEnabled
         self.syncSchedule = syncSchedule
         self.lastSyncAt = lastSyncAt
@@ -289,7 +292,7 @@ struct DingTalkDocumentSource: Identifiable, Codable, Hashable {
             businessSpaceID: try container.decode(UUID.self, forKey: .businessSpaceID),
             displayName: try container.decodeIfPresent(String.self, forKey: .displayName) ?? "钉钉文档源",
             clientID: try container.decodeIfPresent(String.self, forKey: .clientID) ?? "",
-            clientSecret: AppSecureStorage.secret(
+            clientSecret: try AppSecureStorage.secret(
                 legacyPlaintext: legacySecret,
                 service: Self.clientSecretService,
                 account: decodedID.uuidString
@@ -321,9 +324,9 @@ struct DingTalkDocumentSource: Identifiable, Codable, Hashable {
         try container.encode(displayName, forKey: .displayName)
         try container.encode(clientID, forKey: .clientID)
         if !clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            AppSecureStorage.storePassword(clientSecret, service: Self.clientSecretService, account: id.uuidString)
+            try AppSecureStorage.persistPassword(clientSecret, service: Self.clientSecretService, account: id.uuidString)
         } else {
-            AppSecureStorage.deletePassword(service: Self.clientSecretService, account: id.uuidString)
+            try AppSecureStorage.persistPassword("", service: Self.clientSecretService, account: id.uuidString)
         }
         try container.encode("", forKey: .clientSecret)
         try container.encode(agentID, forKey: .agentID)
@@ -625,7 +628,7 @@ struct JiraProjectSource: Identifiable, Codable, Hashable {
             baseURL: try container.decodeIfPresent(String.self, forKey: .baseURL) ?? "",
             authMode: try container.decodeIfPresent(JiraAuthMode.self, forKey: .authMode) ?? .cloudAPIToken,
             username: try container.decodeIfPresent(String.self, forKey: .username) ?? "",
-            token: AppSecureStorage.secret(
+            token: try AppSecureStorage.secret(
                 legacyPlaintext: legacyToken,
                 service: Self.tokenService,
                 account: decodedID.uuidString
@@ -654,9 +657,9 @@ struct JiraProjectSource: Identifiable, Codable, Hashable {
         try container.encode(authMode, forKey: .authMode)
         try container.encode(username, forKey: .username)
         if !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            AppSecureStorage.storePassword(token, service: Self.tokenService, account: id.uuidString)
+            try AppSecureStorage.persistPassword(token, service: Self.tokenService, account: id.uuidString)
         } else {
-            AppSecureStorage.deletePassword(service: Self.tokenService, account: id.uuidString)
+            try AppSecureStorage.persistPassword("", service: Self.tokenService, account: id.uuidString)
         }
         try container.encode("", forKey: .token)
         try container.encode(projectKey, forKey: .projectKey)

@@ -2,6 +2,17 @@ import Foundation
 import Security
 
 enum AppSecureStorage {
+    enum PersistenceError: LocalizedError {
+        case writeFailed(service: String, account: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .writeFailed(let service, let account):
+                return "无法将凭据写入钥匙串（service: \(service), account: \(account)）"
+            }
+        }
+    }
+
     private static let fallbackLock = NSLock()
     private static var fallbackPasswords: [String: String] = [:]
 
@@ -52,6 +63,12 @@ enum AppSecureStorage {
         return fallbackPassword(service: service, account: account)
     }
 
+    static func persistPassword(_ password: String, service: String, account: String) throws {
+        guard storePassword(password, service: service, account: account) else {
+            throw PersistenceError.writeFailed(service: service, account: account)
+        }
+    }
+
     @discardableResult
     static func deletePassword(service: String, account: String) -> Bool {
         let status = SecItemDelete(baseQuery(service: service, account: account) as CFDictionary)
@@ -59,10 +76,10 @@ enum AppSecureStorage {
         return status == errSecSuccess || status == errSecItemNotFound
     }
 
-    static func secret(legacyPlaintext: String, service: String, account: String) -> String {
+    static func secret(legacyPlaintext: String, service: String, account: String) throws -> String {
         let trimmed = legacyPlaintext.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
-            storePassword(trimmed, service: service, account: account)
+            try persistPassword(trimmed, service: service, account: account)
             return legacyPlaintext
         }
         return password(service: service, account: account) ?? ""

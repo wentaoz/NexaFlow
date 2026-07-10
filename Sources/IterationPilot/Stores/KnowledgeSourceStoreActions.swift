@@ -80,7 +80,8 @@ extension ProductWorkflowStore {
         let source = LocalKnowledgeFolderSource(
             businessSpaceID: space.id,
             displayName: url.lastPathComponent.nilIfBlank ?? "本地知识文件夹",
-            folderPath: normalizedPath
+            folderPath: normalizedPath,
+            folderBookmarkData: try? SecurityScopedResource.bookmarkData(for: url)
         )
         workspace.localKnowledgeFolderSources.insert(source, at: 0)
         save()
@@ -326,9 +327,20 @@ extension ProductWorkflowStore {
         Task { [weak self] in
             guard let self else { return }
             defer { self.syncingLocalKnowledgeFolderSourceIDs.remove(current.id) }
-            let folderURL = URL(fileURLWithPath: current.folderPath, isDirectory: true)
+            let fallbackURL = URL(fileURLWithPath: current.folderPath, isDirectory: true)
+            let resolution = SecurityScopedResource.resolve(
+                bookmarkData: current.folderBookmarkData,
+                fallbackURL: fallbackURL
+            )
+            if let refreshedBookmarkData = resolution.refreshedBookmarkData,
+               let sourceIndex = self.workspace.localKnowledgeFolderSources.firstIndex(where: { $0.id == current.id }) {
+                self.workspace.localKnowledgeFolderSources[sourceIndex].folderBookmarkData = refreshedBookmarkData
+                self.save(policy: .deferred)
+            }
             let parsedResult = await Task.detached(priority: .userInitiated) {
-                LocalKnowledgeFolderSyncService.parseSupportedFiles(in: folderURL)
+                SecurityScopedResource.access(resolution.url) {
+                    LocalKnowledgeFolderSyncService.parseSupportedFiles(in: resolution.url)
+                }
             }.value
 
             self.mergeLocalKnowledgeFolderSyncResult(

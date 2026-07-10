@@ -3185,7 +3185,8 @@ private extension HarnessSourceCellRef {
         var result = ""
         while number > 0 {
             let remainder = (number - 1) % 26
-            result = String(UnicodeScalar(65 + remainder)!) + result
+            guard let scalar = UnicodeScalar(65 + remainder) else { return "?" }
+            result = String(scalar) + result
             number = (number - 1) / 26
         }
         return result
