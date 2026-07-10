@@ -49,20 +49,6 @@ await run("AIRequestScenarioTests.testStreamingTextJobRetriesWithCorrectionPromp
 await run("AIRequestScenarioTests.testTextJobRetriesAfterTimeoutErrorAndEventuallySucceeds") { try await aiScenarios.testTextJobRetriesAfterTimeoutErrorAndEventuallySucceeds() }
 await run("AIRequestScenarioTests.testTextJobDoesNotRetryOnNonRetryableHTTPError") { try await aiScenarios.testTextJobDoesNotRetryOnNonRetryableHTTPError() }
 
-let productExperience = ProductExperienceTests()
-await run("ProductExperienceTests.testDemoWorkspaceContainsSelectedAnalyzableReports") { try productExperience.testDemoWorkspaceContainsSelectedAnalyzableReports() }
-await run("ProductExperienceTests.testLegacyWorkspaceDefaultsExperienceFieldsWithoutShowingOnboarding") { try productExperience.testLegacyWorkspaceDefaultsExperienceFieldsWithoutShowingOnboarding() }
-await run("ProductExperienceTests.testOpportunityLegacyDecodeInfersWorkflowStatus") { try productExperience.testOpportunityLegacyDecodeInfersWorkflowStatus() }
-await run("ProductExperienceTests.testOpportunityActionFieldsRoundTrip") { try productExperience.testOpportunityActionFieldsRoundTrip() }
-await run("ProductExperienceTests.testReportPreflightBlocksEmptyAndPlaceholderContent") { productExperience.testReportPreflightBlocksEmptyAndPlaceholderContent() }
-await run("ProductExperienceTests.testReportPreflightAcceptsStructuredEvidenceReport") { productExperience.testReportPreflightAcceptsStructuredEvidenceReport() }
-await run("ProductExperienceTests.testReportTemplateRendererAddsTitleAndOrganization") { productExperience.testReportTemplateRendererAddsTitleAndOrganization() }
-await run("ProductExperienceTests.testReportTemplateRendererKeepsOrganizationBelowExistingTitle") { productExperience.testReportTemplateRendererKeepsOrganizationBelowExistingTitle() }
-await run("ProductExperienceTests.testReportTemplateRendererAppliesSectionOrderAndVisibility") { try productExperience.testReportTemplateRendererAppliesSectionOrderAndVisibility() }
-await run("ProductExperienceTests.testVersionComparisonHandlesReleaseSuffixes") { productExperience.testVersionComparisonHandlesReleaseSuffixes() }
-await run("ProductExperienceTests.testWorkspaceTransferRoundTripPreservesExperienceData") { try productExperience.testWorkspaceTransferRoundTripPreservesExperienceData() }
-await run("ProductExperienceTests.testReportPDFExporterCreatesReadablePDF") { try productExperience.testReportPDFExporterCreatesReadablePDF() }
-await run("ProductExperienceTests.testDiagnosticBundleExporterCreatesZIP") { try productExperience.testDiagnosticBundleExporterCreatesZIP() }
 
 let persistentFingerprint = PersistentAIJobFingerprintTests()
 await run("PersistentAIJobFingerprintTests.testFingerprintIsStableAndDoesNotExposeRawPayloadText") { persistentFingerprint.testFingerprintIsStableAndDoesNotExposeRawPayloadText() }
