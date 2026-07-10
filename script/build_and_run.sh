@@ -11,6 +11,9 @@ ARCHS="${ITERATIONPILOT_ARCHS:-arm64 x86_64}"
 CODESIGN_IDENTITY="${ITERATIONPILOT_CODESIGN_IDENTITY:-}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEFAULT_APP_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")"
+APP_VERSION="${NEXAFLOW_RELEASE_VERSION:-$DEFAULT_APP_VERSION}"
+APP_BUILD="${NEXAFLOW_BUILD_NUMBER:-1}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -93,9 +96,9 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$APP_BUILD</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleSupportedPlatforms</key>

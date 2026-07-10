@@ -2,12 +2,6 @@
 set -euo pipefail
 
 APP_NAME="NexaFlow"
-APP_VERSION="${NEXAFLOW_RELEASE_VERSION:-1.0.3}"
-APP_BUNDLE="dist/$APP_NAME.app"
-RELEASE_ROOT="artifacts/release"
-DATE_DIR="$RELEASE_ROOT/$(date +%F)"
-STAMP="$(date +%Y%m%d-%H%M%S)"
-DMG_BASENAME="$APP_NAME-$APP_VERSION-universal-$STAMP"
 ALLOW_HYBRID="${ALLOW_HYBRID_DMG:-0}"
 STANDARD_ONLY=0
 
@@ -17,6 +11,17 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+DEFAULT_APP_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")"
+APP_BUNDLE="dist/$APP_NAME.app"
+BUNDLED_APP_VERSION=""
+if [[ -f "$APP_BUNDLE/Contents/Info.plist" ]]; then
+  BUNDLED_APP_VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null || true)"
+fi
+APP_VERSION="${NEXAFLOW_RELEASE_VERSION:-${BUNDLED_APP_VERSION:-$DEFAULT_APP_VERSION}}"
+RELEASE_ROOT="artifacts/release"
+DATE_DIR="$RELEASE_ROOT/$(date +%F)"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+DMG_BASENAME="$APP_NAME-$APP_VERSION-universal-$STAMP"
 
 if [[ ! -d "$APP_BUNDLE" ]]; then
   echo "Missing $APP_BUNDLE. Build the app first with ./script/build_and_run.sh --verify." >&2

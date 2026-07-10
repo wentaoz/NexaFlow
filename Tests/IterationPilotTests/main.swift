@@ -42,6 +42,28 @@ await run("ReliabilityTests.testUnknownErrorIsNotRetryable") { reliability.testU
 await run("ReliabilityTests.testConfluenceRequestFailedDescriptionDoesNotExposeURLOrBody") { reliability.testConfluenceRequestFailedDescriptionDoesNotExposeURLOrBody() }
 await run("ReliabilityTests.testJiraRequestFailedDescriptionDoesNotExposeCredentialsOrBody") { reliability.testJiraRequestFailedDescriptionDoesNotExposeCredentialsOrBody() }
 
+let aiScenarios = AIRequestScenarioTests()
+await run("AIRequestScenarioTests.testAIAnalysisServiceReturnsContentFromMockEndpoint") { try await aiScenarios.testAIAnalysisServiceReturnsContentFromMockEndpoint() }
+await run("AIRequestScenarioTests.testAIStreamingServiceReturnsIncrementalEvents") { try await aiScenarios.testAIStreamingServiceReturnsIncrementalEvents() }
+await run("AIRequestScenarioTests.testStreamingTextJobRetriesWithCorrectionPrompt") { try await aiScenarios.testStreamingTextJobRetriesWithCorrectionPrompt() }
+await run("AIRequestScenarioTests.testTextJobRetriesAfterTimeoutErrorAndEventuallySucceeds") { try await aiScenarios.testTextJobRetriesAfterTimeoutErrorAndEventuallySucceeds() }
+await run("AIRequestScenarioTests.testTextJobDoesNotRetryOnNonRetryableHTTPError") { try await aiScenarios.testTextJobDoesNotRetryOnNonRetryableHTTPError() }
+
+let productExperience = ProductExperienceTests()
+await run("ProductExperienceTests.testDemoWorkspaceContainsSelectedAnalyzableReports") { try productExperience.testDemoWorkspaceContainsSelectedAnalyzableReports() }
+await run("ProductExperienceTests.testLegacyWorkspaceDefaultsExperienceFieldsWithoutShowingOnboarding") { try productExperience.testLegacyWorkspaceDefaultsExperienceFieldsWithoutShowingOnboarding() }
+await run("ProductExperienceTests.testOpportunityLegacyDecodeInfersWorkflowStatus") { try productExperience.testOpportunityLegacyDecodeInfersWorkflowStatus() }
+await run("ProductExperienceTests.testOpportunityActionFieldsRoundTrip") { try productExperience.testOpportunityActionFieldsRoundTrip() }
+await run("ProductExperienceTests.testReportPreflightBlocksEmptyAndPlaceholderContent") { productExperience.testReportPreflightBlocksEmptyAndPlaceholderContent() }
+await run("ProductExperienceTests.testReportPreflightAcceptsStructuredEvidenceReport") { productExperience.testReportPreflightAcceptsStructuredEvidenceReport() }
+await run("ProductExperienceTests.testReportTemplateRendererAddsTitleAndOrganization") { productExperience.testReportTemplateRendererAddsTitleAndOrganization() }
+await run("ProductExperienceTests.testReportTemplateRendererKeepsOrganizationBelowExistingTitle") { productExperience.testReportTemplateRendererKeepsOrganizationBelowExistingTitle() }
+await run("ProductExperienceTests.testReportTemplateRendererAppliesSectionOrderAndVisibility") { try productExperience.testReportTemplateRendererAppliesSectionOrderAndVisibility() }
+await run("ProductExperienceTests.testVersionComparisonHandlesReleaseSuffixes") { productExperience.testVersionComparisonHandlesReleaseSuffixes() }
+await run("ProductExperienceTests.testWorkspaceTransferRoundTripPreservesExperienceData") { try productExperience.testWorkspaceTransferRoundTripPreservesExperienceData() }
+await run("ProductExperienceTests.testReportPDFExporterCreatesReadablePDF") { try productExperience.testReportPDFExporterCreatesReadablePDF() }
+await run("ProductExperienceTests.testDiagnosticBundleExporterCreatesZIP") { try productExperience.testDiagnosticBundleExporterCreatesZIP() }
+
 let persistentFingerprint = PersistentAIJobFingerprintTests()
 await run("PersistentAIJobFingerprintTests.testFingerprintIsStableAndDoesNotExposeRawPayloadText") { persistentFingerprint.testFingerprintIsStableAndDoesNotExposeRawPayloadText() }
 await run("PersistentAIJobFingerprintTests.testFingerprintDetectsLargePromptMiddleChanges") { persistentFingerprint.testFingerprintDetectsLargePromptMiddleChanges() }
