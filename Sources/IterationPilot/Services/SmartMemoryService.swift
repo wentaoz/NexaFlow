@@ -252,18 +252,23 @@ enum SmartMemoryRetriever {
     }
 
     private static func queryTerms(userText: String, task: AnalysisTask?, reports: [ImportedReport]) -> [String] {
-        let rawTerms = [userText, task?.goal ?? "", task?.name ?? ""]
-            + reports.flatMap {
-                [$0.displayName, $0.kind.label, $0.shape.label]
-                    + Array($0.headers.prefix(12))
-                    + Array($0.firstColumnValues.prefix(24))
+        var rawTerms: [String] = [userText, task?.goal ?? "", task?.name ?? ""]
+        for report in reports {
+            rawTerms.append(contentsOf: [report.displayName, report.kind.label, report.shape.label])
+            rawTerms.append(contentsOf: report.headers.prefix(12))
+            rawTerms.append(contentsOf: report.firstColumnValues.prefix(24))
+        }
+
+        let separators = CharacterSet(charactersIn: " ，,。；;\n\t/|：:（）()[]【】")
+        var normalizedTerms: [String] = []
+        for rawTerm in rawTerms {
+            for component in rawTerm.components(separatedBy: separators) {
+                let normalized = component.normalizedKey
+                if normalized.count >= 2 {
+                    normalizedTerms.append(normalized)
+                }
             }
-        return rawTerms
-            .flatMap { $0.components(separatedBy: CharacterSet(charactersIn: " ，,。；;\n\t/|：:（）()[]【】")) }
-            .map { $0.normalizedKey }
-            .filter { $0.count >= 2 }
-            .uniqued()
-            .prefix(120)
-            .map { $0 }
+        }
+        return Array(normalizedTerms.uniqued().prefix(120))
     }
 }
